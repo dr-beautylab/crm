@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>뷰티샵 예약 관리</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#7B3F61">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="예약">
+<meta name="robots" content="noindex, nofollow">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="favicon-32.png" sizes="32x32">
+<style>
+  html, body {
+    margin: 0; padding: 0;
+    height: 100%; width: 100%;
+    overflow: hidden;
+    background: #7B3F61;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #app {
+    position: fixed;
+    inset: 0;
+    width: 100%; height: 100%;
+    border: 0;
+    display: block;
+  }
+  #splash {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 18px;
+    background: #7B3F61;
+    color: #fff;
+    font: 600 15px/1.5 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
+          "Malgun Gothic", "Noto Sans KR", sans-serif;
+    transition: opacity .35s;
+    z-index: 2;
+  }
+  #splash.gone { opacity: 0; pointer-events: none; }
+  .ring {
+    width: 34px; height: 34px;
+    border: 3px solid rgba(255,255,255,.28);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #splash small { opacity: .8; font-weight: 500; }
+</style>
+</head>
+<body>
+
+<div id="splash">
+  <div class="ring"></div>
+  <div>뷰티샵 예약 관리</div>
+  <small id="hint">불러오는 중…</small>
+</div>
+
+<iframe id="app"
+        title="뷰티샵 예약 관리"
+        allow="clipboard-write; camera"
+        src="https://script.google.com/macros/s/AKfycbxVt5iXxnW59C0RWanbeR4qBXNLTJQr1lw7GolgFAuW8x7CQ5gJIHcvMeA3EPFgghE/exec"></iframe>
+
+<script>
+  var splash = document.getElementById('splash');
+  var hint   = document.getElementById('hint');
+  var app    = document.getElementById('app');
+  var hidden = false;
+
+  function hide() {
+    if (hidden) return;
+    hidden = true;
+    splash.classList.add('gone');
+    setTimeout(function () { splash.style.display = 'none'; }, 400);
+  }
+
+  app.addEventListener('load', function () { setTimeout(hide, 400); });
+
+  // 느린 회선에서도 결국 화면은 넘겨줍니다
+  setTimeout(function () { hint.textContent = '조금만 더 기다려 주세요…'; }, 4000);
+  setTimeout(hide, 12000);
+
+  // 홈 화면에 추가된 상태에서 뒤로가기로 앱이 닫히는 것을 막습니다
+  if (window.matchMedia('(display-mode: standalone)').matches ||
+      window.navigator.standalone) {
+    history.pushState(null, '', location.href);
+    window.addEventListener('popstate', function () {
+      history.pushState(null, '', location.href);
+    });
+  }
+</script>
+
+</body>
+</html>
