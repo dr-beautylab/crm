@@ -751,6 +751,7 @@ function drawBooking(o){
       '</div></div>') +
     '<div class="btnrow">' +
       '<button class="btn sub" onclick="sendOne(\'' + esc(o.resno) + '\')">💬 안내 문자 보내기</button>' +
+      '<button class="btn sub" onclick="consentLink({resno:\'' + esc(o.resno) + '\'}, \'' + esc(o.phone || o.safe || '') + '\')">🔗 상담지 링크</button>' +
       '<button class="btn sub" onclick="closeSheet()">닫기</button>' +
     '</div>'
   );
@@ -1160,6 +1161,7 @@ function openCustomer(id){
     if(!r.ok){ closeSheet(); toast(r.msg); return; }
     APP.cust = r;
     drawCustomer();
+    loadEsign(id);
   }).catch(function(e){ closeSheet(); fail(e); });
 }
 function selOpts(list, cur, blank){
@@ -1264,6 +1266,8 @@ function drawCustomer(){
         '📸 시술 전·후 사진 촬영</button>' +
       '<button class="btn sub" style="margin-bottom:9px" onclick="openConsent(\'' + esc(c.id) + '\')">' +
         '📝 ' + (isDr ? '시술 동의서' : '사전 상담지') + ' 받기</button>' +
+      '<button class="btn sub" style="margin-bottom:9px" onclick="consentLink({custId:\'' + esc(c.id) + '\'}, \'' + esc(c.phone || '') + '\')">🔗 상담지·동의서 링크 보내기</button>' +
+      '<div id="esign-' + esc(c.id) + '" class="sub" style="font-size:13px"></div>' +
       (c.folder
         ? '<a class="btn sub" href="' + esc(c.folder) + '" target="_blank" rel="noopener">🗂 사진 폴더 열기</a>'
         : '<button class="btn sub" onclick="makeFolder(\'' + esc(c.id) + '\')">🗂 사진 폴더 만들기</button>') +
@@ -1335,6 +1339,61 @@ function gotPhoto(inp){
   rd.readAsDataURL(f);
 }
 
+
+/* ══════════ 전자 상담지·동의서 링크 ══════════ */
+function consentLink(p, phone, form){
+  if(form) p.form = form;
+  call('api_consentLink',[p]).then(function(r){
+    if(!r || !r.ok){ toast((r && r.msg) || '링크를 만들지 못했습니다'); return; }
+    var url = location.origin + r.path;
+    var msg = r.text.replace('#{링크}', url);
+    var sel = (r.forms && r.forms.length > 1)
+      ? '<div class="fld"><label>양식</label><select id="cl-form">' + r.forms.map(function(f){
+          return '<option' + (f === r.form ? ' selected' : '') + '>' + esc(f) + '</option>'; }).join('') + '</select></div>'
+      : '';
+    var ph = String(phone || '').replace(/[^0-9]/g, '');
+    openSheet('<h2>상담지·동의서 링크</h2>' + sel +
+      '<div class="fld"><label>보낼 문구</label><textarea id="cl-msg" rows="5">' + esc(msg) + '</textarea></div>' +
+      '<div class="btnrow">' +
+        (ph ? '<a class="btn" href="sms:' + ph + '?body=' + encodeURIComponent(msg) + '">💬 문자앱으로 보내기</a>' : '') +
+        '<button class="btn sub" onclick="clCopy()">📋 복사</button>' +
+      '</div>' +
+      '<p class="sub" style="font-size:12px;margin-top:10px">손님이 작성·서명하면 고객 정보에 날짜별로 쌓입니다. 링크는 한 번만 쓸 수 있어요.</p>' +
+      '<button class="btn sub" onclick="closeSheet()">닫기</button>');
+    var fs = $('cl-form');
+    if(fs) fs.onchange = function(){ consentLink(p, phone, fs.value); };
+  }).catch(fail);
+}
+function clCopy(){
+  var t = $('cl-msg'); if(!t) return;
+  (navigator.clipboard ? navigator.clipboard.writeText(t.value) : Promise.reject()).then(function(){ toast('복사했어요'); })
+    .catch(function(){ t.select(); document.execCommand('copy'); toast('복사했어요'); });
+}
+function loadEsign(custId){
+  var box = $('esign-' + custId); if(!box) return;
+  call('api_esignList',[custId]).then(function(r){
+    if(!r || !r.ok) return;
+    var h = '';
+    r.pending.forEach(function(x){ h += '<div style="padding:4px 0">⏳ ' + esc(x.form) + ' · 작성 대기 (~' + esc(x.exp.slice(5,16)) + ')</div>'; });
+    r.list.forEach(function(x){ h += '<div style="padding:4px 0"><a href="#" onclick="viewEsign(\'' + esc(x.token) + '\');return false">✅ ' +
+      esc(x.at.slice(0,16)) + ' · ' + esc(x.form) + '</a></div>'; });
+    box.innerHTML = h;
+  }).catch(function(){});
+}
+function viewEsign(token){
+  call('api_esignView',[token]).then(function(r){
+    if(!r || !r.ok){ toast((r && r.msg) || '불러오지 못했습니다'); return; }
+    var rows = r.answers.filter(function(a){ return a.type !== '안내'; }).map(function(a){
+      var v = Array.isArray(a.v) ? a.v.join(', ') : (a.v === true ? '동의' : (a.v === false ? '동의 안 함' : a.v));
+      return '<div style="padding:7px 0;border-top:1px solid #eee"><div style="font-size:12px;opacity:.7">' + esc(a.q) + '</div><div>' + esc(v || '-') + '</div></div>';
+    }).join('');
+    openSheet('<h2>' + esc(r.form) + '</h2><p class="sub">' + esc(r.name) + ' · ' + esc(r.shop) + ' · 제출 ' + esc(r.at) + '</p>' +
+      '<div class="card"><div class="card-b">' + rows + '</div></div>' +
+      '<div class="sec-title">서명</div><div class="card"><div class="card-b"><img src="' + r.sign + '" style="width:100%;background:#fff"></div></div>' +
+      '<p class="sub" style="font-size:11px">서명된 기록은 수정할 수 없습니다.</p>' +
+      '<button class="btn sub" onclick="closeSheet()">닫기</button>');
+  }).catch(fail);
+}
 /* ── 사전 상담지 · 시술 동의서 ── */
 var CON = { id:'', name:'', shop:'', form:'', list:[], ans:{}, sign:null };
 function openConsent(id){
