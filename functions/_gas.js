@@ -5202,14 +5202,14 @@ function api_consentLink(p) {
       var row = null;
       readData().forEach(function (v) { if (String(v[D.RESNO - 1]) === resno) row = rowToObj(v); });
       if (!row) return { ok: false, msg: '예약을 찾지 못했습니다.' };
-      custId = row.custId; name = row.name; shop = row.shop;
+      custId = row.custId; name = row.name; shop = row.shop; p.product = row.product;
     }
     if (custId && !name) {
       var c = api_customer(custId);
       if (c.ok) { name = c.customer.name; if (!shop) shop = c.customer.shop; }
     }
     if (!shop) return { ok: false, msg: '어느 샵 양식인지 알 수 없습니다.' };
-    var form = String(p.form || '') || defaultFormFor(shop);
+    var form = String(p.form || '') || defaultFormFor(shop, p.product);
     if (!form) return { ok: false, msg: shop + ' 에 등록된 상담지·동의서 양식이 없습니다.' };
     var days = Number(cfg('동의서 링크 유효일수', 7)) || 7;
     var token = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '').slice(0, 8);
@@ -5415,8 +5415,298 @@ function api_importTvSales(rows) {
   } catch (e) { logError('팅커뷰 매출 넣기', e); return { ok: false, msg: e.message }; }
 }
 
+/* ---------- 동의서 양식: 조건부 문항 · 도움말 · 공통 보호자 동의 ----------
+   동의서양식 시트 8열 '조건'(예: 방문경로=네이버|인스타, 나이<19), 9열 '도움말' */
+var FORM_COMMON = '보호자 동의(공통)';
+function readForms() {
+  var sh = buildFormSheet();
+  var last = sh.getLastRow();
+  if (last < 2) return [];
+  return sh.getRange(2, 1, last - 1, FORM_HEAD.length + 2).getValues()
+    .filter(function (r) { return String(r[3] || '').trim(); })
+    .map(function (r) {
+      return { shop: String(r[0] || '').trim(), form: String(r[1] || '').trim(),
+               order: Number(r[2] || 0), q: String(r[3]).trim(),
+               type: String(r[4] || '단답').trim(),
+               opts: String(r[5] || '').split('|').map(function (x) { return x.trim(); })
+                       .filter(function (x) { return x; }),
+               need: String(r[6] || '') === 'Y',
+               cond: String(r[7] || '').trim(), help: String(r[8] || '').trim() };
+    })
+    .sort(function (a, b) { return a.order - b.order; });
+}
+function formRow_(f, i) {
+  return [String(f.shop || '').trim(), String(f.form || '상담지').trim(), i + 1,
+          String(f.q).trim(), String(f.type || '단답').trim(),
+          (f.opts || []).join(' | '), f.need ? 'Y' : '', String(f.cond || ''), String(f.help || '')];
+}
+function writeForms_(list) {
+  var sh = buildFormSheet();
+  sh.getRange(1, FORM_HEAD.length + 1, 1, 2).setValues([['조건', '도움말']]);
+  if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, FORM_HEAD.length + 2).clearContent();
+  var rows = list.filter(function (f) { return String(f.q || '').trim(); }).map(formRow_);
+  if (rows.length) sh.getRange(2, 1, rows.length, FORM_HEAD.length + 2).setValues(rows);
+  return rows.length;
+}
+function api_saveForms(list) {
+  try {
+    /* 앱 편집 화면이 조건·도움말을 모르고 보내도 기존 값을 지킵니다 */
+    var old = {};
+    readForms().forEach(function (f) { old[f.shop + '\u0001' + f.form + '\u0001' + f.q] = f; });
+    var merged = (list || []).map(function (f) {
+      var o = old[String(f.shop || '').trim() + '\u0001' + String(f.form || '상담지').trim() + '\u0001' + String(f.q || '').trim()];
+      if (o && f.cond === undefined) f.cond = o.cond;
+      if (o && f.help === undefined) f.help = o.help;
+      return f;
+    });
+    return { ok: true, n: writeForms_(merged) };
+  } catch (e) { logError('앱 양식저장', e); return { ok: false, msg: e.message }; }
+}
 
-  const __API = { api_login: api_login, api_savePins: api_savePins, api_setPassword: api_setPassword, api_bootstrap: api_bootstrap, api_home: api_home, api_day: api_day, api_range: api_range, api_month: api_month, api_updateBooking: api_updateBooking, api_addBooking: api_addBooking, api_searchCustomers: api_searchCustomers, api_customer: api_customer, api_saveCustomer: api_saveCustomer, api_addCustomer: api_addCustomer, api_deleteCustomer: api_deleteCustomer, api_customerFolder: api_customerFolder, api_sales: api_sales, api_menu: api_menu, api_saveMenu: api_saveMenu, api_payment: api_payment, api_savePayment: api_savePayment, api_savePp: api_savePp, api_ppLog: api_ppLog, api_staffReport: api_staffReport, api_usage: api_usage, api_blocks: api_blocks, api_saveBlock: api_saveBlock, api_deleteBlock: api_deleteBlock, api_trash: api_trash, api_restoreTrash: api_restoreTrash, api_cash: api_cash, api_saveCash: api_saveCash, api_deleteCash: api_deleteCash, api_forms: api_forms, api_saveForms: api_saveForms, api_saveConsent: api_saveConsent, api_consents: api_consents, api_uploadPhoto: api_uploadPhoto, api_sendLog: api_sendLog, api_salesReport: api_salesReport, api_checkMail: api_checkMail, api_send: api_send, api_completePast: api_completePast, api_needAttention: api_needAttention, api_rescanRequests: api_rescanRequests, api_consentLink: api_consentLink, api_esignList: api_esignList, api_esignView: api_esignView, api_photos: api_photos, api_deletePhoto: api_deletePhoto, api_sourceStats: api_sourceStats, api_importTvSales: api_importTvSales };
+function formQuestions_(shop, form) {
+  var all = readForms();
+  var qs = all.filter(function (f) { return (!f.shop || f.shop === shop) && f.form === form; });
+  /* 생년월일 문항이 있는 양식에는 공통 보호자 동의를 뒤에 붙입니다 */
+  if (form !== FORM_COMMON && qs.some(function (f) { return f.type === '생년월일'; })) {
+    qs = qs.concat(all.filter(function (f) { return f.form === FORM_COMMON; }));
+  }
+  return qs.map(function (f) { return { q: f.q, type: f.type, opts: f.opts, need: f.need, cond: f.cond, help: f.help }; });
+}
+function ageOf_(v) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v || ''));
+  if (!m) return null;
+  var n = new Date(), a = n.getFullYear() - Number(m[1]);
+  if (n.getMonth() + 1 < Number(m[2]) || (n.getMonth() + 1 === Number(m[2]) && n.getDate() < Number(m[3]))) a--;
+  return a;
+}
+function shownQ_(qs, ans, i, depth) {
+  var c = qs[i].cond;
+  if (!c || (depth || 0) > 5) return true;
+  var m = /^나이\s*<\s*(\d+)$/.exec(c);
+  if (m) {
+    for (var k = 0; k < qs.length; k++) if (qs[k].type === '생년월일') {
+      var a = ageOf_(ans[k] ? ans[k].v : ''); return a !== null && a < Number(m[1]);
+    }
+    return false;
+  }
+  var p = c.indexOf('=');
+  if (p < 0) return true;
+  var t = c.slice(0, p).trim(), want = c.slice(p + 1).split('|').map(function (x) { return x.trim(); });
+  for (var j = 0; j < qs.length; j++) if (qs[j].q === t) {
+    if (!shownQ_(qs, ans, j, (depth || 0) + 1)) return false;
+    var v = ans[j] ? ans[j].v : '';
+    if (Array.isArray(v)) return v.some(function (x) { return want.indexOf(x) >= 0; });
+    return want.indexOf(v) >= 0;
+  }
+  return false;
+}
+
+function publicForm(token) {
+  var L = findLink(token);
+  if (!L) return { ok: false, msg: '링크가 올바르지 않습니다.' };
+  var st = String(L.v[3]);
+  if (st === '완료') return { ok: false, done: true, msg: '이미 작성을 마친 링크입니다. 감사합니다.' };
+  if (st === '취소') return { ok: false, msg: '사용할 수 없는 링크입니다. 매장에 문의해 주세요.' };
+  if (String(L.v[2]) < nowStr()) return { ok: false, msg: '링크 사용 기간이 지났습니다. 매장에 새 링크를 요청해 주세요.' };
+  var shop = String(L.v[7]), form = String(L.v[8]);
+  return { ok: true, shop: shop, form: form, name: String(L.v[5] || ''), questions: formQuestions_(shop, form) };
+}
+
+function publicSubmit(token, body, meta) {
+  var f = publicForm(token);
+  if (!f.ok) return f;
+  body = body || {};
+  var ans = Array.isArray(body.answers) ? body.answers : [];
+  var qs = f.questions;
+  for (var i = 0; i < qs.length; i++) {
+    var q = qs[i];
+    var on = shownQ_(qs, ans, i);
+    if (!on) { ans[i] = { v: '' }; continue; }
+    if (q.type === '서명') {
+      var sv = String(ans[i] ? ans[i].v : '');
+      if (sv && (!/^data:image\/png;base64,/.test(sv) || sv.length > 400000)) return { ok: false, msg: '보호자 서명을 다시 해주세요.' };
+    }
+    if (!q.need || q.type === '안내') continue;
+    var a = ans[i] ? ans[i].v : '';
+    var empty = (a === '' || a === null || a === undefined || a === false || (Array.isArray(a) && !a.length));
+    if (empty) return { ok: false, msg: '필수 항목을 작성해 주세요: ' + q.q };
+  }
+  var sign = String(body.sign || '');
+  if (!/^data:image\/png;base64,/.test(sign) || sign.length < 200) return { ok: false, msg: '서명을 해주세요.' };
+  if (sign.length > 400000) return { ok: false, msg: '서명 이미지가 너무 큽니다. 다시 서명해 주세요.' };
+  var L = findLink(token), v = L.v;
+  var clean = qs.map(function (q, i) { return { q: q.q, type: q.type, v: ans[i] ? ans[i].v : '' }; });
+  var stamp = nowStr();
+  sheetWithHead(ESIGN_SHEET, ESIGN_HEAD).appendRow([stamp, token, v[4], v[5], v[6], v[7], v[8],
+    JSON.stringify(clean), sign, String((meta && meta.ua) || '').slice(0, 300), String((meta && meta.ip) || '')]);
+  L.s.getRange(L.r, 4).setValue('완료');
+  L.s.getRange(L.r, 10).setValue(stamp);
+  try {
+    var lines = clean.filter(function (x, i) { return x.type !== '안내' && shownQ_(qs, ans, i); }).map(function (x) {
+      var val = x.type === '서명' ? (x.v ? '서명 완료' : '') :
+        (Array.isArray(x.v) ? x.v.join(', ') : (x.v === true ? '동의' : (x.v === false ? '동의안함' : String(x.v || ''))));
+      return '· ' + x.q + ' → ' + val;
+    }).join('\n');
+    buildConsentSheet().appendRow([stamp, v[4], v[5], v[7], v[8] + ' (전자서명)', lines, 'esign:' + token]);
+  } catch (e) {}
+  return { ok: true };
+}
+
+/* ---------- 닥터뷰티랩 눈썹·입술·두피 상담·동의서 + 공통 보호자 동의 (대표만 실행) ----------
+   원장님 캔바 상담지(1~3쪽) + 문신시술 표준지침(2026.7) 서식 1·3·4호 항목을 합친 기본 문구 */
+function pmuForms_(shop) {
+  var YN = ['예', '아니요'];
+  function Q(form, q, type, opts, need, cond, help) {
+    return { shop: shop, form: form, q: q, type: type, opts: opts || [], need: !!need, cond: cond || '', help: help || '' };
+  }
+  function top(form, part) {
+    return [
+      Q(form, part + ' 시술 전 상담지·동의서예요.\n작성해 주신 내용은 안전한 시술을 위한 기록으로, 관련 법령에 따라 5년간 보관돼요.', '안내'),
+      Q(form, '성함', '단답', [], 1),
+      Q(form, '연락처', '전화', [], 1),
+      Q(form, '생년월일', '생년월일', [], 1, '', '만 19세 미만이면 아래에 보호자 동의 칸이 함께 나와요.'),
+      Q(form, '성별', '단일선택', ['여', '남'], 1),
+      Q(form, '주소', '단답', [], 0, '', '시·구·동까지만 적어 주셔도 괜찮아요.'),
+      Q(form, '응급 시 연락드릴 분', '단답', [], 1, '', '성함 · 연락처 · 관계를 적어 주세요. 예: 홍길동 010-0000-0000 배우자'),
+      Q(form, '방문 구분', '단일선택', ['신규', '재방문'], 1),
+      Q(form, '방문경로', '단일선택', ['네이버', '인스타', '블로그', '당신을그리다', '소개', '기타'], 1),
+      Q(form, '어떤 키워드로 검색해서 오셨어요?', '단답', [], 0, '방문경로=네이버|인스타|블로그', '예: 마곡 눈썹문신 (선택)'),
+      Q(form, '소개해 주신 분 성함', '단답', [], 0, '방문경로=소개', '예: 김○○ 님 (선택)'),
+      Q(form, '어떤 경로로 오셨는지 알려 주세요', '단답', [], 0, '방문경로=기타')
+    ];
+  }
+  function yn(form, q, detail, help) {
+    var out = [Q(form, q, '단일선택', YN, 1, '', help)];
+    if (detail) out.push(Q(form, detail, '단답', [], 1, q + '=예'));
+    return out;
+  }
+  function health(form, part, prior, extra) {
+    var priorQ = '과거에 ' + prior + '을 받으신 적이 있나요?';
+    var L = [Q(form, '건강 상태 확인', '안내')];
+    L = L.concat(yn(form, priorQ, '리터치를 포함한 총 횟수와 마지막 시술 연도를 알려 주세요'));
+    L = L.concat(yn(form, '이전 시술 뒤 염증·부기·변색 같은 이상 증상이 있었나요?', '어떤 증상이었는지 알려 주세요'));
+    L[L.length - 2].cond = priorQ + '=예';
+    L = L.concat(yn(form, '문신 색소에 알레르기 반응(발진·가려움·부기)을 겪은 적이 있나요?', '어떤 색상이었는지 알려 주세요'));
+    L = L.concat(extra || []);
+    L = L.concat(yn(form, '민감하거나 예민한 피부이신가요?'));
+    L = L.concat(yn(form, '시술 부위에 상처, 염증, 발진 등 피부 이상이 있나요?', '어떤 상태인지 알려 주세요'));
+    L = L.concat(yn(form, '최근 3개월 안에 피부과 치료(염증, 건선, 습진, 아토피 등)를 받으셨나요?', '어떤 치료였는지 알려 주세요'));
+    L = L.concat(yn(form, '흉터가 붉게 부풀어 오르거나(켈로이드) 피부가 잘 붓는 편인가요?'));
+    L = L.concat(yn(form, '알레르기가 있는 물질(금속·약·알코올·라텍스 등)이 있나요?', '무엇인지 알려 주세요'));
+    L.push(Q(form, '진단받았거나 지금 치료 중인 질병이 있나요?', '복수선택',
+      ['뇌졸중(중풍)', '심근경색·협심증', '고혈압', '당뇨병', '고지혈증', '폐결핵', '기타', '해당 없음'], 1));
+    L.push(Q(form, '어떤 질병인지 알려 주세요', '단답', [], 1, '진단받았거나 지금 치료 중인 질병이 있나요?=기타'));
+    L = L.concat(yn(form, 'B형·C형 간염, 후천성면역결핍증(AIDS) 등 혈액으로 옮을 수 있는 감염병으로 진단받았거나 치료 중이신가요?', '',
+      '해당되면 병원 소견서를 확인한 뒤 시술 여부를 정해요.'));
+    L = L.concat(yn(form, '실신한 적이 있거나 뇌전증 등 뇌신경계 질환이 있나요?', '', '해당되면 병원 소견서를 확인한 뒤 시술 여부를 정해요.'));
+    L = L.concat(yn(form, '지금 복용 중인 약이 있나요? (항응고제·아스피린·면역억제제·탈모약 등)', '약 이름을 알려 주세요',
+      '항응고제·아스피린처럼 출혈 위험이 있는 약은 병원 소견서를 확인한 뒤 시술 여부를 정해요.'));
+    L = L.concat(yn(form, '오늘 아픈 곳이 있거나 열, 오한, 심한 피로감이 있나요?'));
+    L = L.concat(yn(form, '최근 24시간 안에 술을 드셨나요?'));
+    L = L.concat(yn(form, '임신 중이거나 수유 중이신가요?'));
+    L.push(Q(form, '그 밖에 원장님께 알려 주실 내용', '서술', [], 0));
+    return L;
+  }
+  function tail(form, care) {
+    var agreeText = '본인은 상기 시술을 시행하기에 앞서 매우 드물게 특이 체질 등으로 예측할 수 없는 부작용과 후유증이 발생될 가능성이 있는 점을 염두에 두며 시술 관련 안내에 대해 구체적으로 충분히 안내받았음을 확인합니다. 본인이 지침 위반하여 발생하는 문제에 대해서 업체는 책임지지 않습니다. 본인은 시술에 자발적 동의하며, 시술 결과에 대해 사업자의 객관적 중대한 책임 외 이의 제기하지 않음을 확인합니다.';
+    return [
+      Q(form, '시술 후 주의사항\n\n' + care.map(function (x) { return '· ' + x; }).join('\n'), '안내'),
+      Q(form, '시술 후 주의사항', '동의', ['위 주의사항을 읽고 이해했어요.'], 1),
+      Q(form, '시술 동의사항', '안내'),
+      Q(form, '시술 방법과 과정', '동의', ['문신행위의 방법과 과정에 대해 충분한 설명을 들었습니다.'], 1),
+      Q(form, '부작용·후유증·사후관리', '동의', ['시술 후 생길 수 있는 부작용, 후유증, 사후관리에 대해 충분한 설명을 들었습니다.'], 1),
+      Q(form, '시술 전후 유의사항', '동의', ['시술 전후 지켜야 할 유의사항에 대해 충분한 설명을 들었습니다.'], 1),
+      Q(form, '자발적 동의', '동의', ['이번 시술은 본인의 자발적인 의사에 따릅니다.'], 1),
+      Q(form, agreeText, '안내'),
+      Q(form, '시술 동의 확인', '동의', ['위 내용을 확인했으며 동의합니다.'], 1),
+      Q(form, '기록용 사진·영상 촬영', '동의', ['시술 전후 상태를 정확히 기록하고 관리하기 위한 사진·영상 촬영에 동의합니다.'], 1),
+      Q(form, '시술 사진을 매장 SNS에 올려도 될까요? (선택)', '단일선택', ['동의해요', '동의하지 않아요'], 0, '',
+        '동의하지 않아도 시술받는 데 아무 문제 없어요.'),
+      Q(form, '개인정보 수집·이용', '동의', ['이름, 연락처, 생년월일 등 작성한 개인정보의 수집·이용에 동의하며, 관련 법령에 따라 일정 기간 보관됨을 설명 들었습니다.'], 1),
+      Q(form, '동의서 사본이 필요하시면 언제든 말씀해 주세요.', '안내')
+    ];
+  }
+  var EB = '눈썹 상담·동의서', LP = '입술 상담·동의서', SC = '두피 상담·동의서';
+  var out = [];
+  out = out.concat(top(EB, '눈썹'), health(EB, '눈썹', '눈썹 문신(반영구)'), tail(EB, [
+    '일주일간 시술 부위에 물이나 마찰이 닿지 않게 주의해 주세요. 눈썹 화장, 클렌징오일, 유분기 많은 화장품은 일주일 정도 피해 주세요.',
+    '재생크림을 아침·저녁 세안 시 얇게 발라 주세요. 면봉에 색소가 묻어 나올 수 있어요. (너무 많이 바르면 색소 안착에 방해가 돼요.)',
+    '회복 기간(최소 1주) 동안 음주와 흡연, 사우나, 땀이 많이 나는 운동은 염증을 일으킬 수 있어 자제해 주세요.',
+    '딱지를 억지로 떼지 마세요. 억지로 떼면 색소가 고르게 안착되지 않거나 색이 덜 나올 수 있어요.',
+    '1달 동안 시간을 두고 지켜봐 주세요. 점점 예쁘게 색이 올라와요.'
+  ]));
+  out = out.concat(top(LP, '입술'), health(LP, '입술', '입술 문신(반영구)',
+    yn(LP, '입술 헤르페스(구순포진) 수포가 올라온 적이 있나요?', '마지막으로 올라온 시기를 알려 주세요')), tail(LP, [
+    '시술 후 각질이 떨어지는 동안 입술이 많이 건조해요. 립밤을 자주 발라 보습해 주세요. (매우 중요)',
+    '시술 부위가 물에 닿지 않게 주의해 주세요. 세안·양치할 때 입술에 비누와 물이 닿지 않게 하고, 샤워할 때도 조심해 주세요.',
+    '각질은 저절로 떨어지게 두세요. 손으로 떼거나 문지르면 색이 고르지 않게 되거나 염증이 생길 수 있어요.',
+    '맵거나 뜨거운 음식, 와인처럼 입술에 자극이 되는 음식은 피하고, 음료는 빨대로 드시는 걸 권해요.',
+    '립스틱·틴트 같은 색조 화장은 상처가 다 아문 뒤에 써 주세요. (컬러 립밤은 7일 뒤, 착색이 강한 틴트는 1달 뒤)',
+    '붓기는 사람마다 달라 2~3일 정도 생길 수 있어요. 헤르페스 수포가 올라오면 바로 피부과에 가 주세요.',
+    '회복 기간(최소 1주) 동안 음주와 흡연, 사우나, 땀이 많이 나는 운동은 염증을 일으킬 수 있어 자제해 주세요.',
+    '색을 오래 유지하려면 평소에도 립밤으로 보습을 꾸준히 해 주세요.',
+    '1달 동안 색이 변하는 건 자연스러운 과정이에요. 시간을 두고 지켜봐 주세요.'
+  ]));
+  out = out.concat(top(SC, '두피'), health(SC, '두피', '두피 문신이나 반영구',
+    yn(SC, '모발 이식을 받으신 적이 있나요?', '횟수와 시기를 알려 주세요').concat(
+    yn(SC, '두피염, 지루성 피부염, 두피 감염이 있나요?', '어떤 상태인지 알려 주세요'))), tail(SC, [
+    '시술 24시간 뒤부터 샴푸해 주세요. 손에서 거품을 충분히 낸 뒤 자극 없이 감고 시원한 물로 헹궈 주세요.',
+    '회복 기간(최소 1주) 동안 음주와 흡연, 사우나, 땀이 많이 나는 운동은 염증을 일으킬 수 있어 자제해 주세요.',
+    '각질은 저절로 떨어지게 두세요. 손으로 떼거나 문지르면 색이 고르지 않게 되거나 염증이 생길 수 있어요.',
+    '첫 샴푸 때 머리카락에 묻어 있던 색소가 염색물처럼 빠질 수 있어요. 두피에 넣은 색소가 빠지는 게 아니니 걱정 마시고, 어두운 수건을 써 주세요.',
+    '두피에 남은 색소가 베개에 묻을 수 있어요. 어두운 수건을 깔고 주무세요.',
+    '염색이나 펌은 2주 이상 피해 주세요. (가능하면 리터치 시술 1달 뒤부터)',
+    '1달 동안 색이 변하는 건 자연스러운 과정이에요. 시간을 두고 지켜봐 주세요.'
+  ]));
+  var G = FORM_COMMON, M = '나이<19';
+  out = out.concat([
+    { shop: '', form: G, q: '보호자 동의 (만 19세 미만)\n만 19세 미만 고객님은 보호자 동의가 꼭 필요해요. (「문신사법」 제22조)\n방문하실 때 고객님과 보호자 분의 신분증, 그리고 가족관계증명서처럼 관계를 확인할 수 있는 서류를 함께 가져와 주세요.', type: '안내', opts: [], need: false, cond: M, help: '' },
+    { shop: '', form: G, q: '보호자 성함', type: '단답', opts: [], need: true, cond: M, help: '' },
+    { shop: '', form: G, q: '보호자 생년월일', type: '단답', opts: [], need: true, cond: M, help: '예: 1980-01-01' },
+    { shop: '', form: G, q: '고객님과의 관계', type: '단일선택', opts: ['부', '모', '법정대리인(후견인)', '기타'], need: true, cond: M, help: '' },
+    { shop: '', form: G, q: '보호자 연락처', type: '전화', opts: [], need: true, cond: M, help: '' },
+    { shop: '', form: G, q: '보호자 주소', type: '단답', opts: [], need: false, cond: M, help: '' },
+    { shop: '', form: G, q: '보호자 동의', type: '동의', opts: ['본인은 미성년자의 보호자로서, 이 시술의 영구성, 제거의 어려움, 생길 수 있는 부작용에 대해 충분한 설명을 듣고 이해했으며, 미성년자에게 시술하는 것에 동의합니다.'], need: true, cond: M, help: '' },
+    { shop: '', form: G, q: '보호자 서명', type: '서명', opts: [], need: true, cond: M, help: '' }
+  ]);
+  return out;
+}
+function api_seedPmuForms() {
+  try {
+    if (CUR.role !== 'owner') return { ok: false, msg: '대표만 쓸 수 있습니다.' };
+    var shop = lineToShop('닥뷰');
+    var fresh = pmuForms_(shop);
+    var names = {}; fresh.forEach(function (f) { names[f.form] = 1; });
+    var keep = readForms().filter(function (f) { return !names[f.form]; });
+    var n = writeForms_(keep.concat(fresh));
+    return { ok: true, shop: shop, total: n, added: fresh.length, kept: keep.length };
+  } catch (e) { logError('동의서 양식 넣기', e); return { ok: false, msg: e.message }; }
+}
+
+/* 링크 양식 목록: 공통 보호자 동의는 따로 고르지 않습니다(자동으로 붙음) */
+function formNamesFor(shop) {
+  var seen = {}, out = [];
+  readForms().forEach(function (f) {
+    if (f.form === FORM_COMMON) return;
+    if (f.shop && f.shop !== shop) return;
+    if (!seen[f.form]) { seen[f.form] = true; out.push(f.form); }
+  });
+  /* 새 시술별 양식을 앞으로 */
+  out.sort(function (a, b) { return (/상담·동의서$/.test(b) ? 1 : 0) - (/상담·동의서$/.test(a) ? 1 : 0); });
+  return out;
+}
+/* 예약 메뉴에 눈썹·입술·두피가 들어 있으면 그 양식을 먼저 고릅니다 */
+function defaultFormFor(shop, product) {
+  var names = formNamesFor(shop), p = String(product || '');
+  var keys = [['두피', '두피'], ['헤어라인', '두피'], ['입술', '입술'], ['립', '입술'], ['눈썹', '눈썹'], ['브로우', '눈썹']];
+  for (var i = 0; i < keys.length; i++) if (p.indexOf(keys[i][0]) >= 0) {
+    for (var j = 0; j < names.length; j++) if (names[j].indexOf(keys[i][1]) === 0) return names[j];
+  }
+  return names.length ? names[0] : '';
+}
+
+
+  const __API = { api_login: api_login, api_savePins: api_savePins, api_setPassword: api_setPassword, api_bootstrap: api_bootstrap, api_home: api_home, api_day: api_day, api_range: api_range, api_month: api_month, api_updateBooking: api_updateBooking, api_addBooking: api_addBooking, api_searchCustomers: api_searchCustomers, api_customer: api_customer, api_saveCustomer: api_saveCustomer, api_addCustomer: api_addCustomer, api_deleteCustomer: api_deleteCustomer, api_customerFolder: api_customerFolder, api_sales: api_sales, api_menu: api_menu, api_saveMenu: api_saveMenu, api_payment: api_payment, api_savePayment: api_savePayment, api_savePp: api_savePp, api_ppLog: api_ppLog, api_staffReport: api_staffReport, api_usage: api_usage, api_blocks: api_blocks, api_saveBlock: api_saveBlock, api_deleteBlock: api_deleteBlock, api_trash: api_trash, api_restoreTrash: api_restoreTrash, api_cash: api_cash, api_saveCash: api_saveCash, api_deleteCash: api_deleteCash, api_forms: api_forms, api_saveForms: api_saveForms, api_saveConsent: api_saveConsent, api_consents: api_consents, api_uploadPhoto: api_uploadPhoto, api_sendLog: api_sendLog, api_salesReport: api_salesReport, api_checkMail: api_checkMail, api_send: api_send, api_completePast: api_completePast, api_needAttention: api_needAttention, api_rescanRequests: api_rescanRequests, api_consentLink: api_consentLink, api_esignList: api_esignList, api_esignView: api_esignView, api_photos: api_photos, api_deletePhoto: api_deletePhoto, api_sourceStats: api_sourceStats, api_importTvSales: api_importTvSales, api_seedPmuForms: api_seedPmuForms };
   return { __API, api, processBookingMails, autoSettle, sendReminderAdvance, sendReminderTomorrow,
            sendReminderToday, dailyMaintenance, setup, publicForm, publicSubmit, authOf, addPhotoRow, expiredPhotos, CUR: () => CUR };
 }

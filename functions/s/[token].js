@@ -43,6 +43,11 @@ button{font:inherit}.clear{border:1px solid var(--line);background:#fff;border-r
 .go{width:100%;border:0;background:var(--c);color:#fff;font-size:16px;font-weight:600;border-radius:12px;padding:15px;margin-top:6px}
 .go:disabled{opacity:.6}.msg{text-align:center;padding:60px 20px}.msg h2{color:var(--c)}
 .err{color:#c0392b;font-size:14px;text-align:center;min-height:20px;margin-top:8px}
+.q.hide{display:none}
+input[type=date],input[type=tel]{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px 11px;font:inherit;background:#fff}
+.q .sub{font-size:12.5px;color:#7a6b73;margin:-4px 0 8px;white-space:pre-wrap}
+.age{font-size:13px;color:var(--c);margin-top:6px}
+canvas.pad2{height:150px}
 </style></head><body>
 <div id="app"></div>
 <script>
@@ -50,50 +55,75 @@ var F = ${data};
 var app = document.getElementById('app');
 function e(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function done(t,s){app.innerHTML='<div class="msg"><h2>'+e(t)+'</h2><p>'+e(s||'')+'</p></div>';}
+function ageOf(v){ var m=/^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(v||''); if(!m) return null; var n=new Date(), a=n.getFullYear()-m[1]; if(n.getMonth()+1<+m[2]||(n.getMonth()+1==+m[2]&&n.getDate()<+m[3])) a--; return a; }
+var pads={};
+function makePad(cv){ var o={cv:cv,drawn:false,last:null,cx:null};
+  o.fit=function(){ var r=cv.getBoundingClientRect(), d=window.devicePixelRatio||1; if(!r.width) return; cv.width=r.width*d; cv.height=r.height*d; o.cx=cv.getContext('2d'); o.cx.scale(d,d); o.cx.lineWidth=2.4; o.cx.lineCap='round'; o.cx.lineJoin='round'; o.cx.strokeStyle='#1d1a1c'; o.drawn=false; };
+  function pt(ev){ var r=cv.getBoundingClientRect(); return {x:ev.clientX-r.left,y:ev.clientY-r.top}; }
+  cv.addEventListener('pointerdown',function(ev){ o.last=pt(ev); cv.setPointerCapture(ev.pointerId); });
+  cv.addEventListener('pointermove',function(ev){ if(!o.last||!o.cx) return; var p=pt(ev); o.cx.beginPath(); o.cx.moveTo(o.last.x,o.last.y); o.cx.lineTo(p.x,p.y); o.cx.stroke(); o.last=p; o.drawn=true; });
+  cv.addEventListener('pointerup',function(){ o.last=null; });
+  o.fit(); return o; }
 if(!F.ok){ done(F.done?'작성 완료':'안내', F.msg); }
 else {
+  var Q=F.questions;
   var h='<header><h1>'+e(F.form)+'</h1><p>'+e(F.shop)+(F.name?' · '+e(F.name)+'님':'')+'</p></header><main>';
-  F.questions.forEach(function(q,i){
-    if(q.type==='안내'){ h+='<div class="q info"><h3>'+e(q.q)+'</h3></div>'; return; }
-    h+='<div class="q" data-i="'+i+'"><h3>'+e(q.q)+(q.need?'<em>*</em>':'')+'</h3>';
+  Q.forEach(function(q,i){
+    var cls='q'+(q.type==='안내'?' info':'')+(q.cond?' hide':'');
+    if(q.type==='안내'){ h+='<div class="'+cls+'" data-i="'+i+'"><h3>'+e(q.q)+'</h3></div>'; return; }
+    h+='<div class="'+cls+'" data-i="'+i+'"><h3>'+e(q.q)+(q.need?'<em>*</em>':'')+'</h3>';
+    if(q.help) h+='<div class="sub">'+e(q.help)+'</div>';
     if(q.type==='단일선택'||q.type==='복수선택'){
       var t=q.type==='단일선택'?'radio':'checkbox';
       q.opts.forEach(function(o){ h+='<label class="opt"><input type="'+t+'" name="q'+i+'" value="'+e(o)+'"><span>'+e(o)+'</span></label>'; });
     } else if(q.type==='동의'){
-      h+='<label class="opt"><input type="checkbox" name="q'+i+'" value="동의"><span>위 내용을 확인했으며 동의합니다.</span></label>';
+      h+='<label class="opt"><input type="checkbox" name="q'+i+'" value="동의"><span>'+e(q.opts[0]||'위 내용을 확인했으며 동의합니다.')+'</span></label>';
     } else if(q.type==='서술'){ h+='<textarea name="q'+i+'"></textarea>'; }
+    else if(q.type==='생년월일'){ h+='<input type="date" name="q'+i+'" max="'+new Date().toISOString().slice(0,10)+'"><div class="age" id="age'+i+'"></div>'; }
+    else if(q.type==='전화'){ h+='<input type="tel" inputmode="tel" name="q'+i+'" placeholder="010-0000-0000">'; }
+    else if(q.type==='서명'){ h+='<canvas class="pad2" data-pad="'+i+'"></canvas><div class="row"><span>손가락으로 서명해 주세요</span><button class="clear" type="button" data-clr="'+i+'">지우기</button></div>'; }
     else { h+='<input type="text" name="q'+i+'">'; }
     h+='</div>';
   });
-  h+='<div class="sign"><h3 style="margin:0 0 8px;font-size:15px">서명<em style="color:#c0392b;font-style:normal"> *</em></h3>'+
+  h+='<div class="sign"><h3 style="margin:0 0 8px;font-size:15px">본인 서명<em style="color:#c0392b;font-style:normal"> *</em></h3>'+
      '<canvas id="pad"></canvas><div class="row"><span>손가락으로 서명해 주세요</span><button class="clear" id="clr" type="button">지우기</button></div></div>'+
      '<button class="go" id="go">제출하기</button><div class="err" id="err"></div></main>';
   app.innerHTML=h;
-  var cv=document.getElementById('pad'), cx, drawn=false, last=null;
-  function fit(){ var r=cv.getBoundingClientRect(), d=window.devicePixelRatio||1; cv.width=r.width*d; cv.height=r.height*d; cx=cv.getContext('2d'); cx.scale(d,d); cx.lineWidth=2.4; cx.lineCap='round'; cx.lineJoin='round'; cx.strokeStyle='#1d1a1c'; drawn=false; }
-  fit();
-  function pt(ev){ var r=cv.getBoundingClientRect(); return {x:ev.clientX-r.left,y:ev.clientY-r.top}; }
-  cv.addEventListener('pointerdown',function(ev){ last=pt(ev); cv.setPointerCapture(ev.pointerId); });
-  cv.addEventListener('pointermove',function(ev){ if(!last) return; var p=pt(ev); cx.beginPath(); cx.moveTo(last.x,last.y); cx.lineTo(p.x,p.y); cx.stroke(); last=p; drawn=true; });
-  cv.addEventListener('pointerup',function(){ last=null; });
-  document.getElementById('clr').onclick=fit;
+  var main=makePad(document.getElementById('pad'));
+  document.getElementById('clr').onclick=main.fit;
+  function valOf(i){ var q=Q[i]; if(q.type==='안내') return '';
+    if(q.type==='서명'){ var p=pads[i]; return p&&p.drawn? p.cv.toDataURL('image/png') : ''; }
+    var els=document.getElementsByName('q'+i);
+    if(q.type==='복수선택'){ var a=[]; els.forEach(function(x){ if(x.checked) a.push(x.value); }); return a; }
+    if(q.type==='단일선택'){ var s=''; els.forEach(function(x){ if(x.checked) s=x.value; }); return s; }
+    if(q.type==='동의'){ return !!(els[0]&&els[0].checked); }
+    return els[0]? els[0].value.trim() : ''; }
+  function byText(t){ for(var k=0;k<Q.length;k++) if(Q[k].q===t) return k; return -1; }
+  function age(){ for(var k=0;k<Q.length;k++) if(Q[k].type==='생년월일') return ageOf(valOf(k)); return null; }
+  function shown(i){ var c=Q[i].cond; if(!c) return true;
+    var m=/^나이\\s*<\\s*(\\d+)$/.exec(c); if(m){ var a=age(); return a!==null && a<+m[1]; }
+    var p=c.indexOf('='); if(p<0) return true;
+    var k=byText(c.slice(0,p).trim()); if(k<0 || !shown(k)) return false;
+    var want=c.slice(p+1).split('|').map(function(x){return x.trim();}), v=valOf(k);
+    if(Array.isArray(v)) return v.some(function(x){return want.indexOf(x)>=0;});
+    return want.indexOf(v)>=0; }
+  function refresh(){
+    Q.forEach(function(q,i){ var box=document.querySelector('.q[data-i="'+i+'"]'); if(!box) return;
+      var on=shown(i); box.classList.toggle('hide',!on);
+      if(on && q.type==='서명' && !pads[i]){ pads[i]=makePad(box.querySelector('canvas')); box.querySelector('[data-clr]').onclick=pads[i].fit; }
+      if(q.type==='생년월일'){ var a=ageOf(valOf(i)), el=document.getElementById('age'+i); if(el) el.textContent = a===null?'':('만 '+a+'세'+(a<19?' · 보호자 동의가 함께 필요해요':'')); }
+    }); }
+  app.addEventListener('change',refresh); app.addEventListener('input',refresh); refresh();
   document.getElementById('go').onclick=function(){
     var err=document.getElementById('err'); err.textContent='';
-    var answers=F.questions.map(function(q,i){
-      if(q.type==='안내') return {v:''};
-      var els=document.getElementsByName('q'+i);
-      if(q.type==='복수선택'){ var a=[]; els.forEach(function(x){ if(x.checked) a.push(x.value); }); return {v:a}; }
-      if(q.type==='단일선택'){ var s=''; els.forEach(function(x){ if(x.checked) s=x.value; }); return {v:s}; }
-      if(q.type==='동의'){ return {v: !!(els[0]&&els[0].checked)}; }
-      return {v: els[0]? els[0].value.trim() : ''};
-    });
-    for(var i=0;i<F.questions.length;i++){ var q=F.questions[i], a=answers[i].v;
-      if(q.need && q.type!=='안내' && (a===''||a===false||(Array.isArray(a)&&!a.length))){
-        err.textContent='필수 항목을 작성해 주세요';
+    var answers=Q.map(function(q,i){ return {v: shown(i)? valOf(i) : ''}; });
+    for(var i=0;i<Q.length;i++){ var q=Q[i], a=answers[i].v;
+      if(q.need && q.type!=='안내' && shown(i) && (a===''||a===false||(Array.isArray(a)&&!a.length))){
+        err.textContent= q.type==='서명' ? '보호자 서명을 해주세요' : '필수 항목을 작성해 주세요';
         var box=document.querySelector('.q[data-i="'+i+'"]'); if(box) box.scrollIntoView({behavior:'smooth',block:'center'}); return; } }
-    if(!drawn){ err.textContent='서명을 해주세요'; return; }
+    if(!main.drawn){ err.textContent='서명을 해주세요'; return; }
     var b=this; b.disabled=true; b.textContent='보내는 중…';
-    fetch(location.pathname,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({answers:answers,sign:cv.toDataURL('image/png')})})
+    fetch(location.pathname,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({answers:answers,sign:main.cv.toDataURL('image/png')})})
       .then(function(r){return r.json();}).then(function(r){
         if(r.ok){ window.scrollTo(0,0); done('작성이 완료되었습니다','감사합니다. 방문하실 때 뵙겠습니다.'); }
         else { b.disabled=false; b.textContent='제출하기'; err.textContent=r.msg||'다시 시도해 주세요'; }

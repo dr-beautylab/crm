@@ -1476,7 +1476,11 @@ function loadEsign(custId){
 function viewEsign(token){
   call('api_esignView',[token]).then(function(r){
     if(!r || !r.ok){ toast((r && r.msg) || '불러오지 못했습니다'); return; }
-    var rows = r.answers.filter(function(a){ return a.type !== '안내'; }).map(function(a){
+    var rows = r.answers.filter(function(a){ return a.type !== '안내' && !(a.v === '' || (Array.isArray(a.v) && !a.v.length)); }).map(function(a){
+      if(a.type === '서명'){
+        return '<div style="padding:7px 0;border-top:1px solid #eee"><div style="font-size:12px;opacity:.7">' + esc(a.q) + '</div>' +
+          (/^data:image\/png;base64,/.test(String(a.v)) ? '<img src="' + a.v + '" style="width:100%;background:#fff">' : '-') + '</div>';
+      }
       var v = Array.isArray(a.v) ? a.v.join(', ') : (a.v === true ? '동의' : (a.v === false ? '동의 안 함' : a.v));
       return '<div style="padding:7px 0;border-top:1px solid #eee"><div style="font-size:12px;opacity:.7">' + esc(a.q) + '</div><div>' + esc(v || '-') + '</div></div>';
     }).join('');
