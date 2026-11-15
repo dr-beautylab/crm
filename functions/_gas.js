@@ -5362,10 +5362,15 @@ function api_sourceStats(from, to) {
     ans.forEach(function (a) {
       var q = String(a.q || '').replace(/\s+/g, '');
       var vals = Array.isArray(a.v) ? a.v : (a.v ? [a.v] : []);
-      if (q.indexOf('방문경로') >= 0 || q.indexOf('알게') >= 0) vals.forEach(function (x) { x = String(x).trim(); if (x) src[x] = (src[x] || 0) + 1; });
-      else if (q.indexOf('키워드') >= 0 || q.indexOf('검색') >= 0) vals.forEach(function (x) {
-        String(x).split(/[,\/·]|\n/).forEach(function (k) { k = k.trim().replace(/\s+/g, ' '); if (k && k.length < 40) kw[k] = (kw[k] || 0) + 1; });
-      } else if (q.indexOf('소개') >= 0) vals.forEach(function (x) { x = String(x).trim(); if (x) ref[x] = (ref[x] || 0) + 1; });
+      if (q.indexOf('방문경로') >= 0 || q.indexOf('알게') >= 0) {
+        vals.forEach(function (x) { x = String(x).trim(); if (x) src[x] = (src[x] || 0) + 1; });
+      } else if (q.indexOf('키워드') >= 0 || q.indexOf('검색') >= 0) {
+        vals.forEach(function (x) {
+          String(x).split(/[,\/·]|\n/).forEach(function (k) { k = k.trim().replace(/\s+/g, ' '); if (k && k.length < 40) kw[k] = (kw[k] || 0) + 1; });
+        });
+      } else if (q.indexOf('소개') >= 0) {
+        vals.forEach(function (x) { x = String(x).trim(); if (x) ref[x] = (ref[x] || 0) + 1; });
+      }
     });
   });
   function top(o) { return Object.keys(o).map(function (k) { return { name: k, n: o[k] }; }).sort(function (a, b) { return b.n - a.n; }); }
