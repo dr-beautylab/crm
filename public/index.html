@@ -1,0 +1,2443 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>뷰티샵 예약 관리</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="icon" href="/favicon-32.png" sizes="32x32">
+<meta name="theme-color" content="#7B3F61">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="robots" content="noindex, nofollow">
+<base target="_top">
+<meta charset="utf-8">
+<style>
+:root{
+  --plum:#7B3F61; --plum-l:#A9739A; --navy:#1F3864; --navy-l:#4E6FA8;
+  --bg:#F7F4F5; --card:#FFFFFF; --ink:#241A20; --ink2:#5E4E56; --muted:#948089;
+  --line:#E7DEE2; --good:#3B6B4C; --warn:#A8620B; --bad:#A33A34;
+  --warnbg:#FDF3E3; --badbg:#FBEBEA; --goodbg:#EAF3EC;
+  --r:14px; --sh:0 1px 2px rgba(60,30,45,.06),0 8px 20px -14px rgba(60,30,45,.3);
+  --tabh:62px;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --plum:#D9A0C0; --plum-l:#B0789A; --navy:#8FADDF; --navy-l:#6E8FC4;
+    --bg:#141014; --card:#1E1820; --ink:#F0E7EC; --ink2:#C6B5BF; --muted:#9C8894;
+    --line:#362C36; --good:#7FBF95; --warn:#E0A75B; --bad:#E58B84;
+    --warnbg:#2B2216; --badbg:#2E1D1D; --goodbg:#1B2A1F;
+    --sh:0 1px 2px rgba(0,0,0,.4),0 10px 26px -16px rgba(0,0,0,.85);
+  }
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;height:100%}
+body{
+  background:var(--bg);color:var(--ink);
+  font-family:"Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",system-ui,-apple-system,sans-serif;
+  font-size:15px;line-height:1.55;word-break:keep-all;
+  -webkit-font-smoothing:antialiased;
+  padding-bottom:calc(var(--tabh) + env(safe-area-inset-bottom));
+}
+button{font:inherit;color:inherit;cursor:pointer;border:none;background:none}
+input,select,textarea{font:inherit;color:var(--ink)}
+a{color:var(--plum)}
+
+/* ── 헤더 ── */
+header{
+  position:sticky;top:0;z-index:20;background:var(--bg);
+  padding:calc(env(safe-area-inset-top) + 14px) 16px 10px;
+  border-bottom:1px solid var(--line);
+}
+.h-row{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+h1{margin:0;font-size:1.32rem;font-weight:700;letter-spacing:-.02em}
+.h-sub{font-size:.78rem;color:var(--muted);white-space:nowrap}
+
+main{padding:14px 16px 24px;max-width:640px;margin:0 auto}
+.page{display:none}
+.page.on{display:block}
+
+/* ── 카드 ── */
+.card{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  box-shadow:var(--sh);margin-bottom:12px;overflow:hidden;
+}
+.card-h{padding:12px 14px 0;font-size:.78rem;font-weight:700;letter-spacing:.06em;color:var(--muted)}
+.card-b{padding:12px 14px}
+.sec-title{font-size:.8rem;font-weight:700;letter-spacing:.06em;color:var(--muted);margin:20px 2px 8px}
+.sec-title:first-child{margin-top:4px}
+
+/* ── 예약 항목 ── */
+.bk{display:flex;gap:11px;padding:11px 13px;border-bottom:1px solid var(--line);align-items:flex-start;width:100%;text-align:left}
+.bk:last-child{border-bottom:none}
+.bk:active{background:var(--bg)}
+.bk-bar{width:3px;align-self:stretch;border-radius:2px;background:var(--plum);flex:none}
+.bk-bar.s2{background:var(--navy)}
+.bk-t{font-variant-numeric:tabular-nums;font-weight:700;font-size:.98rem;width:52px;flex:none}
+.bk-m{flex:1;min-width:0}
+.bk-n{font-weight:600;display:block}
+.bk-p{display:block;font-size:.82rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bk-r{flex:none;text-align:right;font-size:.75rem;color:var(--muted)}
+.bk.cancel{opacity:.5}
+.bk.cancel .bk-n{text-decoration:line-through}
+
+.tag{display:inline-block;font-size:.68rem;font-weight:700;padding:.12em .5em;border-radius:5px;vertical-align:.1em}
+.tag.warn{background:var(--warnbg);color:var(--warn)}
+.tag.bad{background:var(--badbg);color:var(--bad)}
+.tag.good{background:var(--goodbg);color:var(--good)}
+.tag.plum{background:rgba(123,63,97,.12);color:var(--plum)}
+
+.empty{padding:26px 14px;text-align:center;color:var(--muted);font-size:.9rem}
+
+/* ── 알림 배너 ── */
+.alert{display:flex;gap:10px;align-items:center;padding:12px 14px;border-radius:var(--r);margin-bottom:10px;font-size:.9rem}
+.alert.warn{background:var(--warnbg);color:var(--warn)}
+.alert.bad{background:var(--badbg);color:var(--bad)}
+.alert b{font-weight:700}
+.alert .go{margin-left:auto;font-size:.8rem;font-weight:700;white-space:nowrap;opacity:.9}
+
+/* ── 통계 타일 ── */
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:13px 14px;box-shadow:var(--sh)}
+.tile .lb{font-size:.72rem;color:var(--muted);font-weight:600;letter-spacing:.04em}
+.tile .vl{font-size:1.32rem;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px;letter-spacing:-.02em}
+.tile .vl small{font-size:.72rem;font-weight:600;color:var(--muted);margin-left:2px}
+
+/* ── 날짜 스트립 ── */
+.strip{display:flex;gap:6px;overflow-x:auto;padding:2px 0 8px;scrollbar-width:none}
+.strip::-webkit-scrollbar{display:none}
+.dbtn{flex:none;width:47px;padding:7px 0;border-radius:11px;text-align:center;background:var(--card);border:1px solid var(--line)}
+.dbtn .dw{font-size:.68rem;color:var(--muted)}
+.dbtn .dd{font-size:1.05rem;font-weight:700;font-variant-numeric:tabular-nums}
+.dbtn .dot{height:4px;width:4px;border-radius:50%;background:var(--plum);margin:2px auto 0}
+.dbtn .dot.none{background:transparent}
+.dbtn.sel{background:var(--plum);border-color:var(--plum);color:#fff}
+.dbtn.sel .dw{color:rgba(255,255,255,.8)}
+.dbtn.sel .dot{background:#fff}
+.dbtn.sun .dd{color:var(--bad)}
+.dbtn.sat .dd{color:var(--navy)}
+.dbtn.sel .dd{color:#fff}
+
+.daynav{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.cal .h{text-align:center;font-size:.7rem;font-weight:700;color:var(--muted);padding:2px 0 5px}
+.cal .h.sun{color:var(--bad)}.cal .h.sat{color:var(--navy)}
+.cal .cd{aspect-ratio:1/1;border:1px solid transparent;border-radius:10px;background:transparent;
+   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+   padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.cal .cd.out{pointer-events:none}
+.cal .cd .n{font-size:.86rem;font-weight:600;font-variant-numeric:tabular-nums;line-height:1}
+.cal .cd.sun .n{color:var(--bad)}.cal .cd.sat .n{color:var(--navy)}
+.cal .cd .cnt{font-size:.66rem;font-weight:700;line-height:1;min-height:15px;
+   padding:2px 5px;border-radius:7px;background:var(--plum);color:#fff}
+.cal .cd .cnt.none{background:transparent;padding:2px}
+.cal .cd.today{border-color:var(--plum)}
+.cal .cd.sel{background:var(--plum)}
+.cal .cd.sel .n,.cal .cd.sel.sun .n,.cal .cd.sel.sat .n{color:#fff}
+.cal .cd.sel .cnt{background:#fff;color:var(--plum)}
+.cal .cd.sel .cnt.none{background:transparent}
+.daynav .t{font-weight:700;font-size:1.05rem;flex:1}
+.iconbtn{padding:6px 11px;border-radius:9px;background:var(--card);border:1px solid var(--line);font-size:.85rem;font-weight:600}
+.iconbtn:active{background:var(--bg)}
+
+/* ── 폼 ── */
+.field{margin-bottom:11px}
+.field label{display:block;font-size:.76rem;font-weight:700;color:var(--muted);margin-bottom:4px;letter-spacing:.03em}
+.ck{display:flex;align-items:flex-start;gap:10px;padding:10px 2px;border-bottom:1px solid var(--line);
+    font-size:.9rem;line-height:1.5;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.ck:last-child{border-bottom:0}
+.ck input{width:22px;height:22px;flex:0 0 22px;margin:0;accent-color:var(--plum)}
+.ck span{flex:1;padding-top:1px}
+.seg{display:flex;gap:6px;background:var(--line);padding:4px;border-radius:12px;margin-bottom:12px;overflow-x:auto}
+.seg button{flex:1 0 auto;border:0;background:transparent;padding:8px 12px;border-radius:9px;
+    font-size:.84rem;font-weight:700;color:var(--muted);white-space:nowrap;cursor:pointer}
+.seg button.on{background:#fff;color:var(--plum);box-shadow:var(--sh)}
+.dt{width:100%;border-collapse:collapse;font-size:.82rem}
+.dt th{text-align:left;font-size:.72rem;color:var(--muted);font-weight:700;padding:7px 6px;border-bottom:1px solid var(--line)}
+.dt td{padding:9px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+.dt td.r,.dt th.r{text-align:right;font-variant-numeric:tabular-nums}
+.dtwrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.delta{font-size:.76rem;font-weight:700}
+.delta.up{color:#0a7d4b}.delta.dn{color:var(--bad)}
+.field input,.field select,.field textarea{
+  width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;
+  background:var(--bg);outline:none;
+}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--plum)}
+.field textarea{min-height:70px;resize:vertical}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+.btn{display:block;width:100%;padding:13px;border-radius:11px;font-weight:700;text-align:center;background:var(--plum);color:#fff}
+.btn:active{opacity:.85}
+.btn.sub{background:var(--card);color:var(--ink);border:1px solid var(--line)}
+.btn.danger{background:var(--badbg);color:var(--bad)}
+.btnrow{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:12px}
+#lockwrap{position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:24px}
+.lockbox{width:100%;max-width:330px;text-align:center}
+.lockicon{font-size:2.2rem;margin-bottom:6px}
+.lockbox h2{margin:0 0 4px;font-size:1.15rem}
+.locksub{margin:0;font-size:.86rem;color:var(--muted)}
+.lockbox input{width:100%;padding:14px;border-radius:11px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:1rem;margin:16px 0 6px;text-align:center}
+.lockmsg{min-height:19px;font-size:.83rem;color:var(--bad);margin-bottom:8px}
+.pindots{display:flex;justify-content:center;gap:11px;margin:18px 0 4px;height:15px}
+.pindots i{width:13px;height:13px;border-radius:50%;border:2px solid var(--line);display:block}
+.pindots i.f{background:var(--plum);border-color:var(--plum)}
+.keys{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:6px}
+.keys button{padding:15px 0;border-radius:13px;background:var(--card);border:1px solid var(--line);
+  color:var(--ink);font-size:1.28rem;font-weight:600}
+.keys button:active{background:var(--line)}
+.keys button.f{background:transparent;border-color:transparent;font-size:1rem;color:var(--muted)}
+.lockswap{display:block;width:100%;margin-top:10px;padding:9px;font-size:.83rem;color:var(--muted);background:transparent}
+.whoami{display:flex;align-items:center;gap:7px;font-size:.8rem;color:var(--muted)}
+.whoami b{color:var(--ink);font-weight:700}
+.rolechip{font-size:.68rem;font-weight:700;padding:2px 7px;border-radius:999px;
+  background:var(--linebg,var(--line));color:var(--ink2)}
+
+/* ── 시트(모달) ── */
+.mask{position:fixed;inset:0;background:rgba(20,10,16,.45);z-index:40;opacity:0;pointer-events:none;transition:opacity .18s}
+.mask.on{opacity:1;pointer-events:auto}
+.sheet{
+  position:fixed;left:0;right:0;bottom:0;z-index:50;background:var(--card);
+  border-radius:20px 20px 0 0;max-height:88vh;overflow-y:auto;
+  transform:translateY(102%);transition:transform .24s cubic-bezier(.3,.8,.4,1);
+  padding:8px 16px calc(22px + env(safe-area-inset-bottom));
+  box-shadow:0 -8px 30px rgba(0,0,0,.25);
+}
+.sheet.on{transform:translateY(0)}
+.grip{width:38px;height:4px;border-radius:3px;background:var(--line);margin:6px auto 12px}
+.sheet h2{margin:0 0 3px;font-size:1.14rem;font-weight:700}
+.sheet .sub{color:var(--muted);font-size:.85rem;margin:0 0 14px}
+
+/* ── 탭바 ── */
+nav.tabs{
+  position:fixed;left:0;right:0;bottom:0;z-index:30;
+  background:var(--card);border-top:1px solid var(--line);
+  display:grid;grid-template-columns:repeat(6,1fr);
+  padding-bottom:env(safe-area-inset-bottom);
+}
+nav.tabs button{padding:8px 0 7px;font-size:.68rem;font-weight:600;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px}
+nav.tabs button .ic{font-size:1.15rem;line-height:1}
+nav.tabs button.on{color:var(--plum)}
+
+/* ── 토스트 ── */
+#toast{
+  position:fixed;left:50%;bottom:calc(var(--tabh) + 18px + env(safe-area-inset-bottom));
+  transform:translate(-50%,14px);z-index:60;
+  background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:11px;
+  font-size:.88rem;font-weight:600;max-width:88vw;text-align:center;
+  opacity:0;pointer-events:none;transition:.2s;box-shadow:0 6px 20px rgba(0,0,0,.3);
+}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+
+/* ── 로딩 ── */
+.spin{width:19px;height:19px;border:2px solid var(--line);border-top-color:var(--plum);border-radius:50%;animation:sp .7s linear infinite;margin:22px auto}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation-duration:2s}.sheet{transition:none}}
+
+/* ── 매출 막대 ── */
+.bars{display:flex;align-items:flex-end;gap:5px;height:110px;padding:8px 0 0}
+.bars .b{flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%}
+.bars .b i{display:block;background:var(--plum);border-radius:3px 3px 0 0;min-height:2px}
+.bars .b.n2 i{background:var(--navy)}
+.bars .b span{font-size:.6rem;color:var(--muted);text-align:center;margin-top:3px}
+.legend{display:flex;gap:14px;font-size:.75rem;color:var(--muted);margin-top:6px}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;background:var(--plum)}
+.legend .n2 i{background:var(--navy)}
+.kv{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line);font-size:.92rem}
+.kv:last-child{border-bottom:none}
+.kv b{font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="h-row">
+    <h1 id="ttl">오늘</h1>
+    <div class="h-sub" id="sub">불러오는 중…</div>
+  </div>
+</header>
+
+<main>
+  <section class="page on" id="p-home"><div class="spin"></div></section>
+  <section class="page" id="p-book"></section>
+  <section class="page" id="p-cust"></section>
+  <section class="page" id="p-sale"></section>
+  <section class="page" id="p-cash"></section>
+  <section class="page" id="p-tool"></section>
+</main>
+
+<nav class="tabs">
+  <button class="on" data-p="home"><span class="ic">🏠</span>홈</button>
+  <button data-p="book"><span class="ic">📅</span>예약</button>
+  <button data-p="cust"><span class="ic">👤</span>고객</button>
+  <button data-p="sale"><span class="ic">💰</span>매출</button>
+  <button data-p="cash"><span class="ic">💸</span>지출</button>
+  <button data-p="tool"><span class="ic">⚙️</span>도구</button>
+</nav>
+
+<div class="mask" id="mask"></div>
+<div class="sheet" id="sheet"><div class="grip"></div><div id="sheet-b"></div></div>
+<div id="toast"></div>
+
+<script>
+/* ══════════ 공통 ══════════ */
+var APP = { boot:null, page:'home', view:'day', day:null, month:null, monthDots:{}, cust:null, salesYear:null, token:'', role:'owner', me:'' };
+function isOwner(){ return APP.role !== 'staff'; }
+function canSales(){ return !!(APP.boot && APP.boot.canSales); }
+
+function tkGet(){ try { return localStorage.getItem('crm_tk') || ''; } catch(e){ return ''; } }
+function tkSet(v){ try { localStorage.setItem('crm_tk', v || ''); } catch(e){} }
+APP.token = tkGet();
+
+function call(fn, args, noToken){
+  return fetch('/api', { method:'POST', headers:{'content-type':'application/json'},
+    body: JSON.stringify({ fn: fn, args: args || [], token: noToken ? '' : (APP.token || '') }) })
+    .then(function(r){ return r.json(); })
+    .then(function(r){
+      if(r && r.authFail){ showLock('다시 로그인해 주세요'); throw new Error('로그인이 필요합니다'); }
+      return r;
+    });
+}
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function won(n){ return (Number(n)||0).toLocaleString('ko-KR'); }
+function toast(msg){
+  var t = $('toast'); t.textContent = msg; t.classList.add('on');
+  clearTimeout(t._h); t._h = setTimeout(function(){ t.classList.remove('on'); }, 2600);
+}
+function spin(el){ el.innerHTML = '<div class="spin"></div>'; }
+function fail(e){ toast('문제가 생겼습니다: ' + (e && e.message ? e.message : e)); }
+
+var DOW = ['일','월','화','수','목','금','토'];
+function ymd(d){
+  return d.getFullYear() + '-' + ('0'+(d.getMonth()+1)).slice(-2) + '-' + ('0'+d.getDate()).slice(-2);
+}
+function parseYmd(s){ var p = String(s).split('-'); return new Date(+p[0], +p[1]-1, +p[2]); }
+function human(s){
+  if(!s) return '';
+  var d = parseYmd(s), t = new Date();
+  var diff = Math.round((d - parseYmd(ymd(t))) / 86400000);
+  var base = (d.getMonth()+1) + '월 ' + d.getDate() + '일 (' + DOW[d.getDay()] + ')';
+  if(diff === 0) return '오늘 · ' + base;
+  if(diff === 1) return '내일 · ' + base;
+  if(diff === -1) return '어제 · ' + base;
+  return base;
+}
+function shopIdx(name){
+  if(!APP.boot) return 1;
+  for(var i=0;i<APP.boot.shops.length;i++) if(APP.boot.shops[i].name===name) return APP.boot.shops[i].idx;
+  return 1;
+}
+function shopShort(name){
+  /* 화면에는 샵 이름을 그대로 쓰되 띄어쓰기만 붙여서 보여줍니다 (약칭은 시트 이름에만) */
+  return String(name || '').replace(/\s+/g, '');
+}
+
+/* ══════════ 시트(모달) ══════════ */
+function openSheet(html){
+  $('sheet-b').innerHTML = html;
+  $('sheet').classList.add('on'); $('mask').classList.add('on');
+}
+function closeSheet(){
+  $('sheet').classList.remove('on'); $('mask').classList.remove('on');
+}
+$('mask').addEventListener('click', closeSheet);
+
+/* ══════════ 탭 ══════════ */
+document.querySelectorAll('nav.tabs button').forEach(function(b){
+  b.addEventListener('click', function(){
+    var same = (APP.page === b.dataset.p);
+    document.querySelectorAll('nav.tabs button').forEach(function(x){ x.classList.remove('on'); });
+    b.classList.add('on');
+    go(b.dataset.p, same);
+  });
+});
+/* 화면 캐시 — 탭을 다시 눌러도 서버를 또 부르지 않게 합니다 */
+var PGCACHE = {}, PGFORCE = false, PG_MS = 90000;
+function pgHit(id, key){
+  if(PGFORCE) return false;
+  var c = PGCACHE[id];
+  if(!c || c.key !== key) return false;
+  if(Date.now() - c.at > PG_MS) return false;
+  var el = $(id);
+  if(!el || !el.innerHTML.trim()) return false;
+  $('ttl').textContent = c.ttl; $('sub').textContent = c.sub;
+  return true;
+}
+function pgDone(id, key){
+  PGCACHE[id] = { key:key, at:Date.now(),
+                  ttl:$('ttl').textContent, sub:$('sub').textContent };
+}
+function pgClear(){ PGCACHE = {}; }
+
+function go(p, force){
+  if((p === 'sale' || p === 'cash') && !canSales()){ p = 'home'; }
+  PGFORCE = !!force;
+  APP.page = p;
+  document.querySelectorAll('.page').forEach(function(s){ s.classList.remove('on'); });
+  $('p-'+p).classList.add('on');
+  window.scrollTo(0,0);
+  if(p==='home') renderHome();
+  if(p==='book') renderBook();
+  if(p==='cust') renderCust();
+  if(p==='sale') renderSale();
+  if(p==='cash') renderCash();
+  if(p==='tool') renderTool();
+  PGFORCE = false;
+}
+function switchTab(p){
+  document.querySelectorAll('nav.tabs button').forEach(function(x){
+    x.classList.toggle('on', x.dataset.p===p); });
+  go(p);
+}
+/* 직원에게는 매출 탭을 감춥니다 */
+function applyRole(){
+  var show = canSales();
+  document.querySelectorAll('nav.tabs button').forEach(function(x){
+    if(x.dataset.p === 'sale' || x.dataset.p === 'cash') x.style.display = show ? '' : 'none';
+  });
+  document.querySelector('nav.tabs').style.gridTemplateColumns =
+    'repeat(' + (show ? 6 : 4) + ',1fr)';
+  if(!show && (APP.page === 'sale' || APP.page === 'cash')) switchTab('home');
+}
+
+/* ══════════ 예약 항목 HTML ══════════ */
+function bkHtml(o){
+  var cls = 'bk' + (o.status==='취소' ? ' cancel' : '');
+  var bar = 'bk-bar' + (shopIdx(o.shop)===2 ? ' s2' : '');
+  var tags = '';
+  if(!o.phone && !o.safe && o.status!=='취소') tags += ' <span class="tag warn">번호없음</span>';
+  if(o.status==='확인필요') tags += ' <span class="tag bad">확인필요</span>';
+  if(o.status==='이용완료') tags += ' <span class="tag good">완료</span>';
+  if(o.status==='취소') tags += ' <span class="tag bad">취소</span>';
+  return '<button class="'+cls+'" onclick="openBooking(\'' + esc(o.resno) + '\')">' +
+    '<span class="'+bar+'"></span>' +
+    '<span class="bk-t">' + esc(o.time || '--:--') + '</span>' +
+    '<span class="bk-m"><span class="bk-n">' + esc(o.name) + tags + '</span>' +
+    '<span class="bk-p">' + esc(shopShort(o.shop)) + ' · ' + esc(o.product || '상품 미입력') + '</span></span>' +
+    '<span class="bk-r">' + (o.staff ? esc(o.staff) : '<span style="opacity:.5">담당 미정</span>') + '</span>' +
+    '</button>';
+}
+function listHtml(list, emptyMsg){
+  if(!list.length) return '<div class="card"><div class="empty">' + emptyMsg + '</div></div>';
+  return '<div class="card">' + list.map(bkHtml).join('') + '</div>';
+}
+
+/* ══════════ 홈 ══════════ */
+function renderHome(){
+  var el = $('p-home');
+  if(pgHit('p-home','home')) return;
+  if(!el.dataset.loaded) spin(el);
+  call('api_home').then(function(d){
+    el.dataset.loaded = '1';
+    $('ttl').textContent = '오늘';
+    $('sub').textContent = human(d.today).replace('오늘 · ','');
+    var h = '';
+
+    if(d.needCheck) h += '<div class="alert bad" onclick="switchTab(\'tool\')">' +
+      '<span>⚠️</span><span><b>' + d.needCheck + '건</b> 자동으로 못 읽은 예약이 있습니다</span>' +
+      '<span class="go">확인 ›</span></div>';
+    if(d.noPhone) h += '<div class="alert warn" onclick="switchTab(\'tool\')">' +
+      '<span>📞</span><span>연락처가 없는 예약 <b>' + d.noPhone + '건</b> · 문자가 안 나갑니다</span>' +
+      '<span class="go">채우기 ›</span></div>';
+    if(d.noPaid) h += '<div class="alert warn" onclick="switchTab(\'tool\')">' +
+      '<span>💰</span><span>금액 입력 대기 <b>' + d.noPaid + '건</b> · 금액을 넣어야 매출에 잡힙니다</span>' +
+      '<span class="go">등록 ›</span></div>';
+
+    var sn = Object.keys(d.monthSales);
+    h += '<div class="tiles">';
+    h += '<div class="tile"><div class="lb">오늘 예약</div><div class="vl">' + d.todayList.length + '<small>건</small></div></div>';
+    h += '<div class="tile"><div class="lb">내일 예약</div><div class="vl">' + d.tomorrowList.length + '<small>건</small></div></div>';
+    h += '</div>';
+
+    h += '<div class="sec-title">오늘 예약</div>';
+    h += listHtml(d.todayList, '오늘은 예약이 없습니다');
+
+    h += '<div class="sec-title">내일 예약</div>';
+    h += listHtml(d.tomorrowList, '내일은 아직 예약이 없습니다');
+
+    h += '<div class="sec-title">이번 달 매출</div><div class="card"><div class="card-b">';
+    var tot = 0;
+    sn.forEach(function(k){ tot += d.monthSales[k]; });
+    sn.forEach(function(k){
+      h += '<div class="kv"><span>' + esc(k) + '</span><b>' + won(d.monthSales[k]) + '원</b></div>';
+    });
+    h += '<div class="kv" style="border-top:2px solid var(--line);margin-top:4px;padding-top:9px">' +
+         '<span style="font-weight:700">합계</span><b style="color:var(--plum);font-weight:700">' + won(tot) + '원</b></div>';
+    h += '</div></div>';
+    h += '<p style="font-size:.78rem;color:var(--muted);padding:2px 4px 0">시술이 끝난 뒤 [결제 등록]한 금액만 매출로 잡힙니다.</p>';
+
+    if(d.lowRound && d.lowRound.length){
+      h += '<div class="sec-title">잔여회차 1회 이하 · 재구매 안내 대상</div><div class="card">';
+      d.lowRound.forEach(function(c){
+        h += '<button class="bk" onclick="openCustomer(\'' + esc(c.id) + '\')">' +
+          '<span class="bk-bar"></span>' +
+          '<span class="bk-m"><span class="bk-n">' + esc(c.name) + '</span>' +
+          '<span class="bk-p">' + esc(c.product || '회차상품') + ' · 총 ' + c.visits + '회 방문</span></span>' +
+          '<span class="bk-r"><span class="tag bad">잔여 ' + c.left + '</span></span></button>';
+      });
+      h += '</div>';
+    }
+    el.innerHTML = h;
+    pgDone('p-home','home');
+  }).catch(function(e){ el.innerHTML = '<div class="card"><div class="empty">불러오지 못했습니다<br><small>' + esc(e && e.message) + '</small></div></div>'; });
+}
+
+/* ══════════ 예약 ══════════ */
+function weekStart(k){
+  var d = parseYmd(k);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - d.getDay());
+}
+function addDays(d, n){ return new Date(d.getFullYear(), d.getMonth(), d.getDate()+n); }
+function dayLabel(k){
+  var d = parseYmd(k);
+  return (d.getMonth()+1) + '월 ' + d.getDate() + '일(' + DOW[d.getDay()] + ')';
+}
+function bookSeg(v, t){
+  return '<button class="' + (APP.view===v?'on':'') + '" onclick="setView(\'' + v + '\')">' + t + '</button>';
+}
+function setView(v){ APP.view = v; renderBook(); }
+
+function renderBook(){
+  $('ttl').textContent = '예약';
+  if(!APP.day) APP.day = APP.boot ? APP.boot.today : ymd(new Date());
+  if(!APP.view) APP.view = 'day';
+  if(APP.view==='week') return renderWeek();
+  if(APP.view==='month') return renderMonth();
+  return renderDay();
+}
+
+/* ── 일 ── */
+function renderDay(){
+  var el = $('p-book');
+  if(pgHit('p-book','day|'+APP.day)) return;
+  $('sub').textContent = human(APP.day);
+
+  var d0 = parseYmd(APP.day);
+  var ym = APP.day.slice(0,7);
+
+  var strip = '';
+  for(var i=-3;i<=10;i++){
+    var d = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate()+i);
+    var k = ymd(d);
+    var dot = APP.monthDots[k] ? '' : ' none';
+    strip += '<button class="dbtn' + (k===APP.day?' sel':'') +
+      (d.getDay()===0?' sun':'') + (d.getDay()===6?' sat':'') +
+      '" onclick="pickDay(\'' + k + '\')">' +
+      '<div class="dw">' + DOW[d.getDay()] + '</div>' +
+      '<div class="dd">' + d.getDate() + '</div>' +
+      '<div class="dot' + dot + '"></div></button>';
+  }
+
+  el.innerHTML =
+    '<div class="seg">' + bookSeg('day','일') + bookSeg('week','주') + bookSeg('month','월') + '</div>' +
+    '<div class="daynav"><div class="t">' + human(APP.day) + '</div>' +
+    '<button class="iconbtn" onclick="goToday()">오늘</button>' +
+    '<button class="iconbtn" onclick="openAdd()">＋ 예약</button>' +
+    '<button class="iconbtn" onclick="openBlock(APP.day)">🔒 일정</button></div>' +
+    '<div class="strip">' + strip + '</div>' +
+    '<div id="daylist"><div class="spin"></div></div>';
+
+  loadMonthDots(ym, 'day');
+  loadDay();
+  pgDone('p-book','day|'+APP.day);
+}
+function pickDay(k){ APP.day = k; renderBook(); }
+function goToday(){ APP.day = APP.boot ? APP.boot.today : ymd(new Date()); renderBook(); }
+function loadMonthDots(ym, back){
+  if(APP.month === ym) return;
+  APP.month = ym;
+  call('api_month',[ym]).then(function(r){
+    APP.monthDots = {};
+    Object.keys(r.days).forEach(function(k){ APP.monthDots[k] = r.days[k].n; });
+    if(APP.page==='book' && APP.view===back) renderBook();
+  }).catch(function(){});
+}
+function loadDay(){
+  var d = APP.day;
+  Promise.all([ call('api_day',[d]), call('api_blocks',[d, d]) ]).then(function(res){
+    var r = res[0], bl = res[1];
+    var box = $('daylist');
+    if(!box || APP.day !== d) return;
+    var n = r.list.filter(function(o){ return o.status!=='취소'; }).length;
+    var h = '<div class="sec-title">' + n + '건</div>' + listHtml(r.list, '이 날은 예약이 없습니다');
+    var blist = (bl && bl.list) || [];
+    if(blist.length){
+      h += '<div class="sec-title">막아둔 시간 · ' + blist.length + '건</div>' +
+           '<div class="card">' + blist.map(blockHtml).join('') + '</div>';
+    }
+    box.innerHTML = h;
+  }).catch(fail);
+}
+
+/* ── 주 ── */
+function shiftWeek(n){
+  var s = weekStart(APP.day);
+  APP.day = ymd(addDays(s, n*7));
+  renderBook();
+}
+function renderWeek(){
+  var el = $('p-book');
+  var s0 = weekStart(APP.day), s6 = addDays(s0, 6);
+  var from = ymd(s0), to = ymd(s6);
+  $('sub').textContent = dayLabel(from) + ' ~ ' + dayLabel(to);
+
+  el.innerHTML =
+    '<div class="seg">' + bookSeg('day','일') + bookSeg('week','주') + bookSeg('month','월') + '</div>' +
+    '<div class="daynav">' +
+      '<button class="iconbtn" onclick="shiftWeek(-1)">‹</button>' +
+      '<div class="t" style="text-align:center;font-size:.95rem">' +
+        (s0.getMonth()+1) + '.' + s0.getDate() + ' ~ ' + (s6.getMonth()+1) + '.' + s6.getDate() + '</div>' +
+      '<button class="iconbtn" onclick="shiftWeek(1)">›</button>' +
+      '<button class="iconbtn" onclick="goToday()">오늘</button>' +
+    '</div>' +
+    '<div id="weeklist"><div class="spin"></div></div>';
+
+  Promise.all([ call('api_range',[from, to]), call('api_blocks',[from, to]) ]).then(function(res){
+    var r = res[0], bl = res[1];
+    var box = $('weeklist'); if(!box) return;
+    if(!r.ok){ box.innerHTML = '<div class="card"><div class="empty">' + esc(r.msg||'불러오지 못했습니다') + '</div></div>'; return; }
+    var by = {}, bby = {};
+    (r.list||[]).forEach(function(o){ (by[o.date] = by[o.date] || []).push(o); });
+    ((bl&&bl.list)||[]).forEach(function(o){ (bby[o.date] = bby[o.date] || []).push(o); });
+
+    var today = APP.boot ? APP.boot.today : ymd(new Date());
+    var h = '', total = 0;
+    for(var i=0;i<7;i++){
+      var d = addDays(s0, i), k = ymd(d);
+      var list = by[k] || [];
+      var n = list.filter(function(o){ return o.status!=='취소'; }).length;
+      total += n;
+      h += '<div class="sec-title" style="display:flex;align-items:center;gap:7px">' +
+        '<span style="' + (d.getDay()===0?'color:var(--bad)':(d.getDay()===6?'color:var(--navy)':'')) + '">' +
+          (d.getMonth()+1) + '.' + d.getDate() + '(' + DOW[d.getDay()] + ')</span>' +
+        (k===today ? '<span class="tag plum">오늘</span>' : '') +
+        '<span style="margin-left:auto;font-weight:600;color:var(--muted)">' + n + '건</span></div>';
+      var bl2 = bby[k] || [];
+      h += (list.length || bl2.length)
+        ? '<div class="card">' + list.map(bkHtml).join('') + bl2.map(blockHtml).join('') + '</div>'
+        : '<div class="card"><div class="empty" style="padding:12px">예약 없음</div></div>';
+    }
+    box.innerHTML = '<div class="card"><div class="card-b"><div class="kv">' +
+        '<span style="font-weight:700">이번 주 예약</span>' +
+        '<b style="color:var(--plum);font-weight:700">' + total + '건</b></div></div></div>' + h;
+  }).catch(fail);
+}
+
+/* ── 월 ── */
+function shiftMonth(n){
+  var d = parseYmd(APP.day);
+  var t = new Date(d.getFullYear(), d.getMonth()+n, 1);
+  var last = new Date(t.getFullYear(), t.getMonth()+1, 0).getDate();
+  APP.day = ymd(new Date(t.getFullYear(), t.getMonth(), Math.min(d.getDate(), last)));
+  APP.month = null; APP.monthDots = {};
+  renderBook();
+}
+function renderMonth(){
+  var el = $('p-book');
+  var d = parseYmd(APP.day);
+  var ym = APP.day.slice(0,7);
+  var first = new Date(d.getFullYear(), d.getMonth(), 1);
+  var last = new Date(d.getFullYear(), d.getMonth()+1, 0).getDate();
+  var today = APP.boot ? APP.boot.today : ymd(new Date());
+  $('sub').textContent = d.getFullYear() + '년 ' + (d.getMonth()+1) + '월';
+
+  var head = '';
+  for(var w=0;w<7;w++){
+    head += '<div class="h' + (w===0?' sun':(w===6?' sat':'')) + '">' + DOW[w] + '</div>';
+  }
+  var cells = '';
+  for(var b=0;b<first.getDay();b++) cells += '<div class="cd out"></div>';
+  var mtotal = 0;
+  for(var day=1; day<=last; day++){
+    var cd = new Date(d.getFullYear(), d.getMonth(), day);
+    var k = ymd(cd);
+    var n = APP.monthDots[k] || 0;
+    mtotal += n;
+    cells += '<button class="cd' + (k===APP.day?' sel':'') + (k===today?' today':'') +
+      (cd.getDay()===0?' sun':(cd.getDay()===6?' sat':'')) +
+      '" onclick="pickCal(\'' + k + '\')">' +
+      '<span class="n">' + day + '</span>' +
+      (n ? '<span class="cnt">' + n + '</span>' : '<span class="cnt none"></span>') +
+      '</button>';
+  }
+
+  el.innerHTML =
+    '<div class="seg">' + bookSeg('day','일') + bookSeg('week','주') + bookSeg('month','월') + '</div>' +
+    '<div class="daynav">' +
+      '<button class="iconbtn" onclick="shiftMonth(-1)">‹</button>' +
+      '<div class="t" style="text-align:center">' + d.getFullYear() + '년 ' + (d.getMonth()+1) + '월</div>' +
+      '<button class="iconbtn" onclick="shiftMonth(1)">›</button>' +
+      '<button class="iconbtn" onclick="goToday()">오늘</button>' +
+    '</div>' +
+    '<div class="card"><div class="card-b" style="padding:10px">' +
+      '<div class="cal">' + head + cells + '</div></div></div>' +
+    '<p style="font-size:.78rem;color:var(--muted);padding:0 4px;margin:0 0 4px">' +
+      '이번 달 ' + mtotal + '건 · 날짜를 누르면 그날 예약이 아래에 나옵니다</p>' +
+    '<div id="daylist"><div class="spin"></div></div>';
+
+  if(APP.month !== ym){
+    APP.month = ym;
+    call('api_month',[ym]).then(function(r){
+      APP.monthDots = {};
+      Object.keys(r.days).forEach(function(k){ APP.monthDots[k] = r.days[k].n; });
+      if(APP.page==='book' && APP.view==='month') renderBook();
+    }).catch(function(){});
+  }
+  loadDay();
+}
+function pickCal(k){
+  APP.day = k;
+  document.querySelectorAll('#p-book .cal .cd').forEach(function(x){ x.classList.remove('sel'); });
+  var box = $('daylist');
+  if(box) spin(box);
+  renderMonth();
+}
+
+/* 예약 상세 */
+function openBooking(resno){
+  openSheet('<div class="spin"></div>');
+  call('api_day',[APP.day]).then(function(r){
+    var o = null;
+    r.list.forEach(function(x){ if(x.resno===resno) o = x; });
+    if(!o){ return call('api_home').then(function(h){
+      var all = h.todayList.concat(h.tomorrowList);
+      all.forEach(function(x){ if(x.resno===resno) o = x; });
+      if(o) drawBooking(o); else { closeSheet(); toast('예약을 찾지 못했습니다'); }
+    }); }
+    drawBooking(o);
+  }).catch(function(e){ closeSheet(); fail(e); });
+}
+function drawBooking(o){
+  var staff = (APP.boot.staff||[]);
+  var opts = '<option value="">담당 미정</option>' + staff.map(function(s){
+    return '<option value="'+esc(s)+'"'+(s===o.staff?' selected':'')+'>'+esc(s)+'</option>'; }).join('');
+  var st = ['확정','이용완료','취소','확인필요'].map(function(s){
+    return '<option value="'+s+'"'+(s===o.status?' selected':'')+'>'+s+'</option>'; }).join('');
+  openSheet(
+    '<h2>' + esc(o.name) + '</h2>' +
+    '<p class="sub">' + esc(shopShort(o.shop)) + ' · ' + human(o.date) + ' ' + esc(o.time) + '</p>' +
+    '<div class="card"><div class="card-b" style="font-size:.88rem;color:var(--ink2)">' +
+      '<div class="kv"><span>예약상품</span><span style="text-align:right;max-width:62%">' + esc(o.product||'-') + '</span></div>' +
+      (o.option ? '<div class="kv"><span>선택메뉴</span><span style="text-align:right;max-width:62%">' + esc(o.option) + '</span></div>' : '') +
+      (o.request ? '<div class="kv"><span>요청사항</span><span style="text-align:right;max-width:62%">' + esc(o.request) + '</span></div>' : '') +
+      '<div class="kv"><span>예약번호</span><span>' + esc(o.resno) + ' <span class="tag plum">' + esc(o.source||'') + '</span></span></div>' +
+    '</div></div>' +
+    '<div class="field"><label>연락처' + (!o.phone && !o.safe ? ' — 넣어야 문자가 나갑니다' : '') + '</label>' +
+      '<input id="f-phone" type="tel" inputmode="tel" value="' + esc(o.phone || o.safe) + '" placeholder="010-0000-0000"></div>' +
+    '<div class="grid2">' +
+      '<div class="field"><label>담당자</label><select id="f-staff">' + opts + '</select></div>' +
+      '<div class="field"><label>상태</label><select id="f-status">' + st + '</select></div>' +
+    '</div>' +
+    '<div class="field"><label>시간</label><input id="f-time" value="' + esc(o.time) + '" placeholder="13:00"></div>' +
+    '<button class="btn" onclick="saveBooking(\'' + esc(o.resno) + '\')">저장</button>' +
+    '<div class="sec-title">결제 · 매출</div>' +
+    '<div class="card"><div class="card-b">' +
+      '<div class="kv"><span>실결제금액</span><b style="color:var(--plum)">' +
+        (o.status === '이용완료' && o.paid ? won(o.paid) + '원' : '아직 등록 안 됨') + '</b></div>' +
+      '<button class="btn" style="margin-top:10px" onclick="openPay(\'' + esc(o.resno) + '\')">💰 결제 등록 / 수정</button>' +
+    '</div></div>' +
+    (o.status === '취소' ? '' :
+      '<div class="sec-title">예약 취소</div>' +
+      '<div class="card"><div class="card-b">' +
+        '<p style="margin:0 0 10px;font-size:.86rem;color:var(--ink2)">' +
+        '사장님이 직접 취소하시는 경우입니다. 네이버 예약은 ' +
+        '<a href="https://new.smartplace.naver.com/bookings" target="_blank" rel="noopener" style="color:var(--plum);font-weight:700">스마트플레이스</a>' +
+        '에서 따로 취소해 주세요. 이 버튼은 앱 기록만 취소로 바꿉니다.</p>' +
+        '<button class="btn danger" onclick="askCancelBooking(\'' + esc(o.resno) + '\',this)">❌ 이 예약 취소 처리</button>' +
+      '</div></div>') +
+    '<div class="btnrow">' +
+      '<button class="btn sub" onclick="sendOne(\'' + esc(o.resno) + '\')">💬 안내 문자 보내기</button>' +
+      '<button class="btn sub" onclick="closeSheet()">닫기</button>' +
+    '</div>'
+  );
+}
+function askCancelBooking(resno, btn){
+  if(btn.dataset.armed === '1'){ doCancelBooking(resno, btn); return; }
+  btn.dataset.armed = '1';
+  btn.textContent = '정말 취소할까요? 한 번 더 누르세요';
+  setTimeout(function(){
+    if(btn && btn.dataset.armed === '1'){ btn.dataset.armed = ''; btn.textContent = '❌ 이 예약 취소 처리'; }
+  }, 5000);
+}
+function doCancelBooking(resno, btn){
+  busy(btn, '취소 처리 중…');
+  call('api_updateBooking',[{ resno:resno, status:'취소' }]).then(function(r){
+    done(btn);
+    if(!r.ok){ toast(r.msg || '처리하지 못했습니다'); return; }
+    closeSheet(); toast('취소로 바꿨습니다');
+    $('p-home').dataset.loaded = ''; pgClear(); APP.month = null;
+    if(APP.page === 'book') loadDay(); else renderHome();
+  }).catch(function(e){ done(btn); fail(e); });
+}
+function saveBooking(resno){
+  var p = {
+    resno: resno,
+    phone: $('f-phone').value,
+    staff: $('f-staff').value,
+    status: $('f-status').value,
+    time: $('f-time').value
+  };
+  toast('저장 중…');
+  call('api_updateBooking',[p]).then(function(r){
+    if(!r.ok){ toast(r.msg); return; }
+    closeSheet(); toast('저장했습니다');
+    $('p-home').dataset.loaded = ''; pgClear();
+    if(APP.page==='book') loadDay(); else renderHome();
+  }).catch(fail);
+}
+/* ── 결제(매출) 등록 ── */
+var PAY = { resno:'', menu:[], items:[], discount:0, b:null, pay:'', staff:'', npay:0, feeRate:0, creditRate:0, debitRate:0, payList:[], staffList:[] };
+function openPay(resno){
+  toast('불러오는 중…');
+  call('api_payment',[resno]).then(function(r){
+    if(!r.ok){ toast(r.msg||'불러오지 못했습니다'); return; }
+    PAY.resno = resno; PAY.menu = r.menu||[]; PAY.b = r.booking;
+    PAY.items = (r.items||[]).map(function(it){ return {name:it.name, amount:Number(it.amount||0)}; });
+    if(!PAY.items.length) PAY.items = [{name:'', amount:0}];
+    PAY.discount = Number(r.discount||0);
+    PAY.pay = r.pay||''; PAY.staff = r.staff||'';
+    PAY.npay = Number(r.npay||0); PAY.feeRate = Number(r.feeRate||0);
+    PAY.creditRate = Number(r.creditRate||0); PAY.debitRate = Number(r.debitRate||0);
+    PAY.payList = r.payList||[]; PAY.staffList = r.staffList||[];
+    drawPay();
+  }).catch(fail);
+}
+function payTotal(){
+  var t = 0;
+  PAY.items.forEach(function(it){ t += Number(it.amount||0); });
+  return t - Number(PAY.discount||0);
+}
+function drawPay(){
+  var b = PAY.b;
+  var rows = PAY.items.map(function(it, i){
+    var opts = '<option value="">직접 입력</option>' + PAY.menu.map(function(m){
+      return '<option value="'+esc(m.name)+'"'+(m.name===it.name?' selected':'')+'>'+esc(m.name)+'</option>'; }).join('');
+    return '<div class="card" style="margin-bottom:8px"><div class="card-b">' +
+      '<div class="field"><label>시술 ' + (i+1) + ' — 메뉴에서 고르기</label>' +
+        '<select onchange="payPick(' + i + ',this.value)">' + opts + '</select></div>' +
+      '<div class="field"><label>시술명</label><input value="' + esc(it.name) + '" oninput="PAY.items[' + i + '].name=this.value"></div>' +
+      '<div class="field"><label>금액</label><input type="number" inputmode="numeric" value="' + (it.amount||'') + '" oninput="PAY.items[' + i + '].amount=this.value;paySum()"></div>' +
+      (PAY.items.length>1 ? '<button class="btn danger" onclick="PAY.items.splice(' + i + ',1);drawPay()">이 항목 빼기</button>' : '') +
+      '</div></div>';
+  }).join('');
+  openSheet(
+    '<h2>결제 등록</h2><p class="sub">' + esc(b.name) + ' · ' + human(b.date) + ' ' + esc(b.time) + '</p>' +
+    rows +
+    '<button class="btn sub" onclick="PAY.items.push({name:\'\',amount:0});drawPay()">＋ 시술 항목 추가</button>' +
+    '<div class="field" style="margin-top:12px"><label>할인 금액</label>' +
+      '<input type="number" inputmode="numeric" value="' + (PAY.discount||'') + '" oninput="PAY.discount=this.value;paySum()" placeholder="0"></div>' +
+    '<div class="card"><div class="card-b"><div class="kv">' +
+      '<span style="font-weight:700">실결제금액</span>' +
+      '<b id="pay-sum" style="color:var(--plum);font-weight:700;font-size:1.05rem">' + won(payTotal()) + '원</b>' +
+      '</div></div></div>' +
+    '<div class="grid2" style="margin-top:10px">' +
+      '<div class="field"><label>결제수단</label><select onchange="PAY.pay=this.value;payNpay()">' +
+        selOpts(PAY.payList, PAY.pay, '선택 안 함') + '</select></div>' +
+      '<div class="field"><label>담당자</label><select onchange="PAY.staff=this.value">' +
+        selOpts(PAY.staffList, PAY.staff, '지정 안 함') + '</select></div>' +
+    '</div>' +
+    '<div id="pay-np">' + payNpayHtml() + '</div>' +
+    '<button class="btn" style="margin-top:4px" onclick="savePay(this)">저장하고 이용완료 처리</button>' +
+    '<div class="btnrow"><button class="btn sub" style="grid-column:1/3" onclick="closeSheet()">취소</button></div>'
+  );
+}
+function payPick(i, name){
+  if(!name) return;
+  var m = null;
+  PAY.menu.forEach(function(x){ if(x.name===name) m = x; });
+  PAY.items[i].name = name;
+  if(m) PAY.items[i].amount = m.price;
+  drawPay();
+}
+function paySum(){ var el = $('pay-sum'); if(el) el.textContent = won(payTotal()) + '원'; payFee(); }
+
+/* 네이버 결제액: 카드와 섞어 받은 경우에만 따로 물어봅니다 */
+function payMixed(){ var p = String(PAY.pay||''); return p.indexOf('네이버') >= 0 && p.indexOf('카드') >= 0; }
+function payNpayHtml(){
+  if(!payMixed()) return '';
+  return '<div class="field"><label>이 중 네이버로 결제한 금액</label>' +
+    '<input id="pay-np-i" type="number" inputmode="numeric" value="' + (PAY.npay||'') +
+    '" oninput="PAY.npay=this.value;payFee()" placeholder="0"></div>' +
+    '<p id="pay-fee" style="font-size:.8rem;color:var(--muted);margin:-6px 0 10px;padding:0 4px">' +
+    payFeeText() + '</p>';
+}
+function payFeeText(){
+  var b = Number(PAY.npay||0);
+  if(!b) return '카드와 네이버페이를 같이 받으셨네요. 네이버로 결제한 금액만 적어주시면 수수료를 정확히 잡습니다.';
+  var cardAmt = Math.max(0, payTotal() - b);
+  var cr = String(PAY.pay||'').indexOf('체크') >= 0 ? PAY.debitRate : PAY.creditRate;
+  return '네이버 ' + won(Math.round(b * PAY.feeRate / 100)) + '원 + 카드 ' +
+         won(Math.round(cardAmt * cr / 100)) + '원 = 수수료 약 ' +
+         won(Math.round(b * PAY.feeRate / 100) + Math.round(cardAmt * cr / 100)) + '원';
+}
+function payFee(){ var el = $('pay-fee'); if(el) el.textContent = payFeeText(); }
+function payNpay(){
+  if(!payMixed()) PAY.npay = 0;
+  var el = $('pay-np'); if(el) el.innerHTML = payNpayHtml();
+}
+function savePay(btn){
+  busy(btn, '저장 중…');
+  call('api_savePayment',[{resno:PAY.resno, items:PAY.items, discount:PAY.discount, pay:PAY.pay, staff:PAY.staff, npay:(payMixed()?PAY.npay:0)}]).then(function(r){
+    done(btn);
+    if(!r.ok){ toast(r.msg||'저장하지 못했습니다'); return; }
+    closeSheet(); toast('매출 ' + won(r.total) + '원으로 등록했습니다');
+    $('p-home').dataset.loaded = ''; pgClear();
+    if(APP.page==='book') loadDay(); else if(APP.page==='sale') renderSale(); else renderHome();
+  }).catch(function(e){ done(btn); fail(e); });
+}
+
+/* ── 시술 메뉴 ── */
+var MENU = { list:[], shops:[] };
+/* ── 직원 번호 관리 ── */
+function pinRowHtml(i, name, pin){
+  return '<div class="pinrow" data-i="' + i + '" style="display:grid;grid-template-columns:1fr 1fr 40px;gap:7px;margin-bottom:8px">' +
+    '<input class="pn" placeholder="이름 (예: 김실장)" value="' + esc(name||'') + '">' +
+    '<input class="pp" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="번호 (영문·숫자 4~20자)" value="' + esc(pin||'') + '">' +
+    '<button class="btn danger" style="padding:0" onclick="this.parentNode.remove()">✕</button>' +
+    '</div>';
+}
+function openPins(){
+  var pins = (APP.boot && APP.boot.pins) || [];
+  var rows = pins.length
+    ? pins.map(function(x,i){ return pinRowHtml(i, x.name, x.pin); }).join('')
+    : pinRowHtml(0,'','');
+  openSheet(
+    '<h2>직원 번호 관리</h2>' +
+    '<p class="sub">직원마다 다른 번호를 주세요. 지우면 그 직원은 바로 못 들어옵니다.<br>' +
+      '숫자만 쓰면 번호판으로 빠르게 누를 수 있고, 영문을 섞으면 더 안전합니다.</p>' +
+    '<div id="pinlist">' + rows + '</div>' +
+    '<button class="btn sub" style="margin-bottom:12px" onclick="addPinRow()">＋ 직원 추가</button>' +
+    '<label class="ck" style="display:flex;align-items:center;gap:9px;margin-bottom:14px">' +
+      '<input type="checkbox" id="pinsales"' + ((APP.boot && APP.boot.staffSales) ? ' checked' : '') + '>' +
+      '<span>직원에게도 매출 화면 보여주기</span></label>' +
+    '<button class="btn" onclick="savePins(this)">저장</button>' +
+    '<div class="btnrow"><button class="btn sub" style="grid-column:1/3" onclick="closeSheet()">취소</button></div>'
+  );
+}
+function addPinRow(){
+  var box = $('pinlist');
+  box.insertAdjacentHTML('beforeend', pinRowHtml(box.children.length, '', ''));
+}
+function savePins(btn){
+  var list = [];
+  var rows = $('pinlist').querySelectorAll('.pinrow');
+  for(var i=0;i<rows.length;i++){
+    var nm = rows[i].querySelector('.pn').value.trim();
+    var pn = rows[i].querySelector('.pp').value.trim();
+    if(!nm && !pn) continue;
+    if(!nm){ toast('이름을 넣어주세요'); return; }
+    if(!/^[A-Za-z0-9]{4,20}$/.test(pn)){
+      toast(nm + ' 번호는 영문·숫자 4~20자로 넣어주세요 (띄어쓰기·기호 불가)'); return; }
+    list.push({ name:nm, pin:pn });
+  }
+  busy(btn, '저장 중…');
+  call('api_savePins',[{ staff:list, sales: $('pinsales').checked }]).then(function(r){
+    done(btn);
+    if(!r.ok){ toast(r.msg || '저장하지 못했습니다'); return; }
+    APP.boot.pins = list;
+    APP.boot.staffSales = $('pinsales').checked;
+    APP.boot.locked = true;
+    closeSheet();
+    toast(r.count ? ('직원 ' + r.count + '명 저장했습니다') : '직원 번호를 모두 지웠습니다');
+    renderTool();
+  }).catch(function(e){ done(btn); fail(e); });
+}
+
+function openPw(){
+  openSheet(
+    '<h2>사장님 번호</h2><p class="sub">영문·숫자 4~20자. 바꾸면 사장님 기기는 모두 다시 로그인해야 합니다</p>' +
+    '<div class="field"><label>새 번호</label><input id="pw1" type="password" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="new-password"></div>' +
+    '<div class="field"><label>한 번 더</label><input id="pw2" type="password" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="new-password"></div>' +
+    '<button class="btn" onclick="savePw(this)">저장</button>' +
+    '<div class="btnrow"><button class="btn sub" style="grid-column:1/3" onclick="closeSheet()">취소</button></div>'
+  );
+}
+function savePw(btn){
+  var a = $('pw1').value.trim(), b = $('pw2').value.trim();
+  if(a.length < 4){ toast('4자 이상으로 정해주세요'); return; }
+  if(a !== b){ toast('두 번 입력한 값이 다릅니다'); return; }
+  busy(btn, '저장 중…');
+  call('api_setPassword',[{ pw:a, token:APP.token }]).then(function(r){
+    done(btn);
+    if(!r.ok){ toast(r.msg || '바꾸지 못했습니다'); return; }
+    APP.token = r.token; tkSet(r.token);
+    APP.boot.locked = true;
+    closeSheet(); toast('번호를 저장했습니다');
+    renderTool();
+  }).catch(function(e){ done(btn); fail(e); });
+}
+function openMenu(){
+  toast('불러오는 중…');
+  call('api_menu').then(function(r){
+    if(!r.ok){ toast(r.msg||'불러오지 못했습니다'); return; }
+    MENU.list = (r.list||[]).map(function(m){ return {shop:m.shop, name:m.name, price:m.price, min:m.min}; });
+    MENU.shops = (r.shops && r.shops.length) ? r.shops : (APP.boot.shops||[]).map(function(x){ return x.name; });
+    drawMenu();
+  }).catch(fail);
+}
+function drawMenu(){
+  var rows = MENU.list.map(function(m, i){
+    var opts = MENU.shops.map(function(n){
+      return '<option value="'+esc(n)+'"'+(n===m.shop?' selected':'')+'>'+esc(n)+'</option>'; }).join('');
+    return '<div class="card" style="margin-bottom:8px"><div class="card-b">' +
+      '<div class="field"><label>샵</label><select onchange="MENU.list['+i+'].shop=this.value">'+opts+'</select></div>' +
+      '<div class="field"><label>시술명</label><input value="'+esc(m.name)+'" oninput="MENU.list['+i+'].name=this.value"></div>' +
+      '<div class="grid2">' +
+        '<div class="field"><label>기본금액</label><input type="number" inputmode="numeric" value="'+(m.price||'')+'" oninput="MENU.list['+i+'].price=this.value"></div>' +
+        '<div class="field"><label>소요시간(분)</label><input type="number" inputmode="numeric" value="'+(m.min||'')+'" oninput="MENU.list['+i+'].min=this.value"></div>' +
+      '</div>' +
+      '<button class="btn danger" onclick="MENU.list.splice('+i+',1);drawMenu()">이 시술 지우기</button>' +
+      '</div></div>';
+  }).join('');
+  openSheet(
+    '<h2>시술 메뉴</h2><p class="sub">결제 등록할 때 고르는 목록입니다</p>' +
+    (rows || '<div class="card"><div class="empty">아직 등록된 시술이 없습니다</div></div>') +
+    '<button class="btn sub" onclick="MENU.list.push({shop:MENU.shops[0]||\'\',name:\'\',price:0,min:0});drawMenu()">＋ 시술 추가</button>' +
+    '<button class="btn" style="margin-top:10px" onclick="saveMenu(this)">저장</button>' +
+    '<div class="btnrow"><button class="btn sub" style="grid-column:1/3" onclick="closeSheet()">닫기</button></div>'
+  );
+}
+function saveMenu(btn){
+  busy(btn, '저장 중…');
+  call('api_saveMenu',[MENU.list]).then(function(r){
+    done(btn);
+    if(!r.ok){ toast(r.msg||'저장하지 못했습니다'); return; }
+    closeSheet(); toast(r.n + '개 저장했습니다');
+  }).catch(function(e){ done(btn); fail(e); });
+}
+function sendOne(resno){
+  toast('보내는 중…');
+  call('api_send',[[resno],'개별']).then(function(r){
+    if(r.testMode){ toast('테스트 모드입니다 — 실제로는 나가지 않았습니다'); return; }
+    toast(r.sent ? '보냈습니다' : ('보내지 못했습니다' + (r.reasons[0] ? ' · ' + r.reasons[0].split('·')[1] : '')));
+  }).catch(fail);
+}
+
+/* 수동 예약 추가 */
+function openAdd(){
+  var sh = APP.boot.shops.map(function(s){ return '<option value="'+esc(s.name)+'">'+esc(s.name)+'</option>'; }).join('');
+  var staff = '<option value="">담당 미정</option>' + (APP.boot.staff||[]).map(function(s){
+    return '<option value="'+esc(s)+'">'+esc(s)+'</option>'; }).join('');
+  openSheet(
+    '<h2>예약 직접 추가</h2><p class="sub">전화·카톡으로 받은 예약을 넣습니다</p>' +
+    '<div class="field"><label>샵</label><select id="a-shop">' + sh + '</select></div>' +
+    '<div class="grid2">' +
+      '<div class="field"><label>날짜</label><input id="a-date" type="date" value="' + APP.day + '"></div>' +
+      '<div class="field"><label>시간</label><input id="a-time" type="time" value="13:00"></div>' +
+    '</div>' +
+    '<div class="grid2">' +
+      '<div class="field"><label>이름</label><input id="a-name" placeholder="홍길동"></div>' +
+      '<div class="field"><label>연락처</label><input id="a-phone" type="tel" inputmode="tel" placeholder="010-"></div>' +
+    '</div>' +
+    '<div class="field"><label>시술 내용</label><input id="a-product" placeholder="퍼스널컬러 진단"></div>' +
+    '<div class="grid2">' +
+      '<div class="field"><label>금액</label><input id="a-amount" type="number" inputmode="numeric" placeholder="200000"></div>' +
+      '<div class="field"><label>담당자</label><select id="a-staff">' + staff + '</select></div>' +
+    '</div>' +
+    '<div class="field"><label>요청사항</label><input id="a-request" placeholder="(선택)"></div>' +
+    '<button class="btn" onclick="addBooking()">추가하기</button>' +
+    '<div class="btnrow"><button class="btn sub" style="grid-column:1/3" onclick="closeSheet()">취소</button></div>'
+  );
+}
+function addBooking(){
+  var p = {
+    shop: $('a-shop').value, date: $('a-date').value, time: $('a-time').value,
+    name: $('a-name').value, phone: $('a-phone').value, product: $('a-product').value,
+    amount: $('a-amount').value, staff: $('a-staff').value, request: $('a-request').value
+  };
+  if(!p.name.trim()){ toast('이름을 넣어주세요'); return; }
+  toast('추가하는 중…');
+  call('api_addBooking',[p]).then(function(r){
+    if(!r.ok){ toast(r.msg); return; }
+    closeSheet(); toast('추가했습니다');
+    APP.day = p.date; APP.month = null;
+    $('p-home').dataset.loaded = ''; pgClear();
+    switchTab('book');
+  }).catch(fail);
+}
+
+/* ══════════ 고객 ══════════ */
+function renderCust(){
+  var el = $('p-cust');
+  $('ttl').textContent = '고객';
+  $('sub').textContent = '';
+  if(!el.dataset.built){
+    el.dataset.built = '1';
+    el.innerHTML =
+      '<div class="field"><input id="c-q" placeholder="이름 · 전화 뒤 4자리 · 태그" ' +
+      'oninput="custSearch()" autocomplete="off"></div>' +
+      '<div id="c-filter" class="seg" style="display:none"></div>' +
+      '<button class="btn sub" style="margin-bottom:10px" onclick="openAddCust()">＋ 고객 직접 추가</button>' +
+      '<div id="c-list"><div class="spin"></div></div>';
+  }
+  custSearch();
+}
+function openAddCust(){
+  var sh = APP.boot.shops.map(function(s){ return '<option value="'+esc(s.name)+'">'+esc(s.name)+'</option>'; }).join('');
+  openSheet(
+    '<h2>고객 직접 추가</h2><p class="sub">예약 없이 고객만 먼저 등록합니다</p>' +
+    '<div class="grid2">' +
+      '<div class="field"><label>이름</label><input id="n-name" placeholder="홍길동"></div>' +
+      '<div class="field"><label>연락처</label><input id="n-phone" type="tel" inputmode="tel" placeholder="010-"></div>' +
+    '</div>' +
+    '<div class="field"><label>주 이용 샵</label><select id="n-shop">' + sh + '</select></div>' +
+    '<div class="grid2">' +
+      '<div class="field"><label>회차상품</label><input id="n-product" placeholder="(선택)"></div>' +
+      '<div class="field"><label>총회차</label><input id="n-total" type="number" inputmode="numeric" placeholder="(선택)"></div>' +
+    '</div>' +
+    '<div class="field"><label>메모 (특이사항·피부·선호 색상 등)</label><textarea id="n-memo"></textarea></div>' +
+    '<button class="btn" onclick="addCust()">추가하기</button>' +
+    '<div class="btnrow"><button class="btn sub" style="grid-column:1/3" onclick="closeSheet()">취소</button></div>'
+  );
+}
+function addCust(){
+  var p = { name:$('n-name').value, phone:$('n-phone').value, shop:$('n-shop').value,
+            product:$('n-product').value, total:$('n-total').value, memo:$('n-memo').value };
+  if(!p.name.trim()){ toast('이름을 넣어주세요'); return; }
+  toast('추가하는 중…');
+  call('api_addCustomer',[p]).then(function(r){
+    if(!r.ok){ toast(r.msg||'추가하지 못했습니다'); return; }
+    closeSheet(); toast('추가했습니다'); custSearch();
+  }).catch(fail);
+}
+var _ct = null;
+var CFIL = '';
+function custFilter(v){ CFIL = (CFIL===v ? '' : v); custSearch(); }
+function drawFilter(r){
+  var box = $('c-filter'); if(!box) return;
+  var opts = ['VIP','단골','신규','재방문','휴면','블랙리스트','선불보유','이번달생일','번호없음'];
+  (r.tags||[]).forEach(function(t){ if(opts.indexOf(t)<0) opts.push(t); });
+  box.style.display = 'flex';
+  box.innerHTML = opts.map(function(o){
+    return '<button class="' + (CFIL===o?'on':'') + '" onclick="custFilter(' +
+      JSON.stringify(o).replace(/"/g,'&quot;') + ')">' + esc(o) + '</button>';
+  }).join('');
+}
+function gradeTag(g){
+  if(!g) return '';
+  var cls = (g==='VIP'||g==='단골') ? 'plum' : (g==='블랙리스트' ? 'bad' : (g==='휴면' ? 'warn' : 'good'));
+  return ' <span class="tag ' + cls + '">' + esc(g) + '</span>';
+}
+function custSearch(){
+  clearTimeout(_ct);
+  _ct = setTimeout(function(){
+    var q = $('c-q') ? $('c-q').value : '';
+    call('api_searchCustomers',[q, CFIL]).then(function(r){
+      var box = $('c-list'); if(!box) return;
+      drawFilter(r);
+      if(!r.list.length){
+        box.innerHTML = '<div class="card"><div class="empty">' +
+          (CFIL ? '이 조건에 맞는 고객이 없습니다' : '찾는 고객이 없습니다') + '</div></div>';
+        return;
+      }
+      var h = '<div class="sec-title">' + r.total + '명' +
+        (CFIL ? ' · ' + esc(CFIL) : '') +
+        (r.total>r.list.length?' (앞 '+r.list.length+'명)':'') + '</div><div class="card">';
+      r.list.forEach(function(c){
+        var t = gradeTag(c.grade);
+        if(!c.phone && !c.safe) t += ' <span class="tag warn">번호없음</span>';
+        else if(c.total!==null && c.left!==null && c.left<=1) t += ' <span class="tag bad">잔여 '+c.left+'</span>';
+        var sub = (c.phone || c.safe || '연락처 미입력') + ' · ' + c.visits + '회';
+        if(c.prepaid) sub += ' · 선불 ' + won(c.prepaid);
+        if(c.tag) sub += ' · ' + c.tag;
+        h += '<button class="bk" onclick="openCustomer(\'' + esc(c.id) + '\')">' +
+          '<span class="bk-bar' + (shopIdx(c.shop)===2?' s2':'') + '"></span>' +
+          '<span class="bk-m"><span class="bk-n">' + esc(c.name) + t + '</span>' +
+          '<span class="bk-p">' + esc(sub) + '</span></span>' +
+          '<span class="bk-r">' + (c.last ? esc(c.last.slice(2).replace(/-/g,'.')) : '') + '</span></button>';
+      });
+      box.innerHTML = h + '</div>';
+    }).catch(fail);
+  }, 220);
+}
+function openCustomer(id){
+  openSheet('<div class="spin"></div>');
+  call('api_customer',[id]).then(function(r){
+    if(!r.ok){ closeSheet(); toast(r.msg); return; }
+    APP.cust = r;
+    drawCustomer();
+  }).catch(function(e){ closeSheet(); fail(e); });
+}
+function selOpts(list, cur, blank){
+  var h = '<option value="">' + esc(blank||'—') + '</option>';
+  (list||[]).forEach(function(x){
+    h += '<option value="'+esc(x)+'"'+(String(x)===String(cur||'')?' selected':'')+'>'+esc(x)+'</option>';
+  });
+  return h;
+}
+function drawCustomer(){
+  var r = APP.cust, c = r.customer;
+  var sIdx = shopIdx(c.shop);
+  var isDr = (sIdx === 2);
+  var isDraw = (sIdx === 1);
+
+  var hist = r.history.map(function(o){
+    return '<div class="bk" style="cursor:default">' +
+      '<span class="bk-bar' + (shopIdx(o.shop)===2?' s2':'') + '"></span>' +
+      '<span class="bk-m"><span class="bk-n">' + esc(o.date) + ' ' + esc(o.time) + '</span>' +
+      '<span class="bk-p">' + esc(shopShort(o.shop)) + ' · ' + esc(o.product||'-') + (o.option?' · '+esc(o.option):'') + '</span></span>' +
+      '<span class="bk-r">' + (o.paid||o.amount ? won(o.paid||o.amount)+'원<br>' : '') +
+      '<span class="tag ' + (o.status==='이용완료'?'good':(o.status==='취소'?'bad':'plum')) + '">' + esc(o.status) + '</span></span></div>';
+  }).join('');
+
+  var h =
+    '<h2>' + esc(c.name) + (c.name.indexOf('*')>=0 ? ' <span class="tag warn">실명 미입력</span>' : '') + '</h2>' +
+    '<p class="sub">' + esc(shopShort(c.shop||'')) + ' · 총 ' + c.visits + '회 방문' + (c.last?' · 최근 '+c.last:'') + '</p>' +
+
+    '<div class="tiles">' +
+      '<div class="tile"><div class="lb">실 매출액</div><div class="vl" style="font-size:1rem">' +
+        won(r.sales||0) + '<small>원</small></div></div>' +
+      '<div class="tile"><div class="lb">방문 횟수</div><div class="vl">' + c.visits + '<small>회</small></div></div>' +
+    '</div>' +
+    '<div class="tiles">' +
+      '<div class="tile"><div class="lb">잔여 선불액</div><div class="vl" style="font-size:1rem">' +
+        won(c.prepaid||0) + '<small>원</small></div></div>' +
+      '<div class="tile"><div class="lb">잔여 포인트</div><div class="vl" style="font-size:1rem">' +
+        won(c.point||0) + '<small>P</small></div></div>' +
+    '</div>' +
+    '<div class="btnrow" style="margin-bottom:12px">' +
+      '<button class="btn sub" onclick="openPp(\'' + esc(c.id) + '\',\'선불\')">💳 선불 충전·사용</button>' +
+      '<button class="btn sub" onclick="openPp(\'' + esc(c.id) + '\',\'포인트\')">⭐ 포인트</button>' +
+    '</div>' +
+
+    '<div class="sec-title">기본 정보</div>' +
+    '<div class="grid2">' +
+      '<div class="field"><label>실명</label><input id="k-name" value="' + esc(c.name) + '"></div>' +
+      '<div class="field"><label>연락처</label><input id="k-phone" type="tel" inputmode="tel" value="' + esc(c.phone||c.safe) + '"></div>' +
+    '</div>' +
+    '<div class="grid2">' +
+      '<div class="field"><label>성별</label><select id="k-gender">' +
+        selOpts(['여','남'], c.gender, '선택 안 함') + '</select></div>' +
+      '<div class="field"><label>생년월일</label><input id="k-birth" type="date" value="' + esc(c.birth||'') + '"></div>' +
+    '</div>' +
+    '<div class="grid2">' +
+      '<div class="field"><label>담당자</label><select id="k-staff">' +
+        selOpts(r.staff, c.staff, '지정 안 함') + '</select></div>' +
+      '<div class="field"><label>등급</label><select id="k-grade">' +
+        selOpts(['VIP','단골','신규','재방문','휴면','블랙리스트'], c.grade, '없음') + '</select></div>' +
+    '</div>' +
+    '<div class="field"><label>태그 (쉼표로 구분)</label>' +
+      '<input id="k-tag" value="' + esc(c.tag||'') + '" placeholder="예) 퍼스널브로우, 소개고객"></div>' +
+    '<p style="font-size:.8rem;color:var(--muted);padding:0 4px;margin:0 0 6px">' +
+      '다음 예약: <b>' + (c.next ? esc(c.next) : '없음') + '</b></p>' +
+
+    '<div class="sec-title">회차 상품</div>' +
+    '<div class="grid2">' +
+      '<div class="field"><label>회차상품</label><input id="k-product" value="' + esc(c.product) + '"></div>' +
+      '<div class="field"><label>총회차</label><input id="k-total" type="number" inputmode="numeric" value="' + (c.total===null?'':c.total) + '"></div>' +
+    '</div>' +
+    '<p style="font-size:.8rem;color:var(--muted);padding:0 4px;margin:0 0 6px">' +
+      '남은 회차: <b>' + (c.left===null?'—':c.left) + '</b>' + (c.total?' / '+c.total:'') + ' (사용 ' + (c.used||0) + '회)</p>' +
+
+    '<div class="sec-title">연결 고객</div>' +
+    '<div class="field"><input id="k-rel" value="' + esc(c.rel||'') + '" ' +
+      'placeholder="예) 김영희 (친구 소개), 박철수 (남편)"></div>' +
+    '<p style="font-size:.8rem;color:var(--muted);padding:0 4px;margin:0 0 4px">' +
+      '가족·친구·소개해준 분을 적어두면 나중에 찾기 쉽습니다.</p>';
+
+  if(isDr){
+    h += '<div class="sec-title">시술 기록 (닥터뷰티랩)</div>' +
+      '<div class="grid2">' +
+        '<div class="field"><label>사용한 니들</label><input id="k-needle" value="' + esc(c.needle||'') + '" placeholder="예) 1R 0.18"></div>' +
+        '<div class="field"><label>사용한 색소</label><input id="k-pigment" value="' + esc(c.pigment||'') + '" placeholder="예) 브라운 #3"></div>' +
+      '</div>';
+  }
+  if(isDraw){
+    h += '<div class="sec-title">퍼스널컬러 (당신을그리다)</div>' +
+      '<div class="field"><label>퍼스널컬러 톤</label><input id="k-tone" value="' + esc(c.tone||'') + '" ' +
+        'placeholder="예) 봄 라이트 / 여름 뮤트"></div>';
+  }
+
+  h += '<div class="sec-title">메모 · 특이사항</div>' +
+    '<div class="field"><textarea id="k-memo" style="min-height:110px" ' +
+      'placeholder="' + (isDraw ? '컨설팅 내용, 피부·모발 특징, 선호 색상 등' : '피부 상태, 통증 반응, 주의사항 등') + '">' +
+      esc(c.memo) + '</textarea></div>' +
+
+    '<button class="btn" onclick="saveCustomer(\'' + esc(c.id) + '\')">저장</button>' +
+
+    '<div class="sec-title">사진 · 서류</div><div class="card"><div class="card-b">' +
+      '<button class="btn sub" style="margin-bottom:9px" onclick="openPhoto(\'' + esc(c.id) + '\')">' +
+        '📸 시술 전·후 사진 촬영</button>' +
+      '<button class="btn sub" style="margin-bottom:9px" onclick="openConsent(\'' + esc(c.id) + '\')">' +
+        '📝 ' + (isDr ? '시술 동의서' : '사전 상담지') + ' 받기</button>' +
+      (c.folder
+        ? '<a class="btn sub" href="' + esc(c.folder) + '" target="_blank" rel="noopener">🗂 사진 폴더 열기</a>'
+        : '<button class="btn sub" onclick="makeFolder(\'' + esc(c.id) + '\')">🗂 사진 폴더 만들기</button>') +
+    '</div></div>' +
+
+    '<div class="sec-title">방문 히스토리 · ' + r.history.length + '건</div>' +
+    (hist ? '<div class="card">' + hist + '</div>' : '<div class="card"><div class="empty">기록이 없습니다</div></div>') +
+
+    '<button class="btn danger" style="margin-top:14px" ' +
+      'onclick="askDelCustomer(\'' + esc(c.id) + '\',this)">고객 삭제</button>' +
+    '<div class="btnrow" style="margin-top:9px">' +
+      '<button class="btn sub" style="grid-column:1/3" onclick="closeSheet()">닫기</button></div>';
+
+  openSheet(h);
+}
+
+/* ── 시술 전·후 사진 ── */
+var PHOTO = { id:'', kind:'전' };
+function openPhoto(id){
+  PHOTO.id = id;
+  openSheet(
+    '<h2>시술 전·후 사진</h2>' +
+    '<p class="sub">찍으면 그 고객 사진 폴더에 바로 저장됩니다</p>' +
+    '<div class="card"><div class="card-b">' +
+      '<button class="btn" style="margin-bottom:9px" onclick="pickPhoto(\'전\')">📷 시술 <b>전</b> 사진 찍기</button>' +
+      '<button class="btn" onclick="pickPhoto(\'후\')">📷 시술 <b>후</b> 사진 찍기</button>' +
+    '</div></div>' +
+    '<input type="file" id="ph-file" accept="image/*" capture="environment" style="display:none" onchange="gotPhoto(this)">' +
+    '<div id="ph-out"></div>' +
+    '<p style="font-size:.8rem;color:var(--muted);padding:0 4px">' +
+      '아이폰·안드로이드 모두 카메라가 바로 열립니다. 이미 찍어둔 사진을 고를 수도 있어요. ' +
+      '사진은 자동으로 줄여서 올리기 때문에 오래 걸리지 않습니다.</p>' +
+    '<div class="btnrow"><button class="btn sub" style="grid-column:1/3" ' +
+      'onclick="openCustomer(\'' + esc(id) + '\')">← 고객 정보로</button></div>'
+  );
+}
+function pickPhoto(kind){ PHOTO.kind = kind; $('ph-file').click(); }
+function gotPhoto(inp){
+  var f = inp.files && inp.files[0];
+  inp.value = '';
+  if(!f) return;
+  var out = $('ph-out');
+  out.innerHTML = '<div class="card"><div class="card-b"><div class="spin"></div>' +
+    '<p style="text-align:center;font-size:.85rem;color:var(--muted);margin:8px 0 0">사진 올리는 중…</p></div></div>';
+  var rd = new FileReader();
+  rd.onload = function(){
+    var img = new Image();
+    img.onload = function(){
+      var MX = 1400;
+      var w = img.width, hh = img.height;
+      if(w > MX || hh > MX){ var k = MX / Math.max(w, hh); w = Math.round(w*k); hh = Math.round(hh*k); }
+      var cv = document.createElement('canvas');
+      cv.width = w; cv.height = hh;
+      cv.getContext('2d').drawImage(img, 0, 0, w, hh);
+      var data = cv.toDataURL('image/jpeg', 0.82);
+      call('api_uploadPhoto',[{custId:PHOTO.id, kind:PHOTO.kind, data:data}]).then(function(r){
+        if(!r.ok){ out.innerHTML=''; toast(r.msg||'올리지 못했습니다'); return; }
+        out.innerHTML = '<div class="card"><div class="card-b">' +
+          '<div class="kv"><span>' + esc(r.kind) + ' 사진 저장 완료</span>' +
+          '<a href="' + esc(r.url) + '" target="_blank" rel="noopener" style="color:var(--plum);font-weight:700">열기</a></div>' +
+          '</div></div>';
+        toast(r.kind + ' 사진을 저장했습니다');
+      }).catch(function(e){ out.innerHTML=''; fail(e); });
+    };
+    img.onerror = function(){ out.innerHTML=''; toast('사진을 읽지 못했습니다'); };
+    img.src = rd.result;
+  };
+  rd.onerror = function(){ out.innerHTML=''; toast('사진을 읽지 못했습니다'); };
+  rd.readAsDataURL(f);
+}
+
+/* ── 사전 상담지 · 시술 동의서 ── */
+var CON = { id:'', name:'', shop:'', form:'', list:[], ans:{}, sign:null };
+function openConsent(id){
+  var c = (APP.cust && APP.cust.customer) || null;
+  if(!c || c.id !== id){
+    call('api_customer',[id]).then(function(r){
+      if(!r.ok){ toast(r.msg); return; }
+      APP.cust = r; openConsent(id);
+    }).catch(fail);
+    return;
+  }
+  CON.id = id; CON.name = c.name; CON.shop = c.shop; CON.ans = {}; CON.sign = null;
+  openSheet('<div class="spin"></div>');
+  call('api_forms',[c.shop]).then(function(r){
+    if(!r.ok){ closeSheet(); toast(r.msg||'양식을 불러오지 못했습니다'); return; }
+    CON.list = r.list || [];
+    CON.form = CON.list.length ? CON.list[0].form : '상담지';
+    drawConsent();
+  }).catch(function(e){ closeSheet(); fail(e); });
+}
+function drawConsent(){
+  if(!CON.list.length){
+    openSheet('<h2>양식이 없습니다</h2>' +
+      '<p class="sub">이 샵에 등록된 문항이 없습니다. 도구 탭 → 상담지·동의서 양식에서 확인해 주세요.</p>' +
+      '<div class="btnrow"><button class="btn sub" style="grid-column:1/3" onclick="closeSheet()">닫기</button></div>');
+    return;
+  }
+  var h = '<h2>' + esc(CON.form) + '</h2>' +
+    '<p class="sub">' + esc(CON.name) + ' 고객님 · 화면을 고객님께 건네주세요</p>';
+
+  CON.list.forEach(function(f, i){
+    var key = 'q' + i;
+    var need = f.need ? ' <span style="color:var(--bad)">*</span>' : '';
+
+    if(f.type === '안내'){
+      h += '<div class="card"><div class="card-b">' +
+        '<div style="white-space:pre-wrap;font-size:.88rem;line-height:1.6;color:var(--ink2)">' +
+        esc(f.q) + '</div></div></div>';
+      return;
+    }
+    if(f.type === '동의'){
+      h += '<div class="card" style="border-color:var(--plum)"><div class="card-b">' +
+        '<div style="white-space:pre-wrap;font-size:.86rem;line-height:1.65;color:var(--ink2)">' +
+        esc(f.q) + '</div>' +
+        '<label class="ck" style="margin-top:12px;font-weight:700">' +
+          '<input type="checkbox" onchange="CON.ans[\'' + key + '\']=this.checked?\'동의\':\'\'">' +
+          '<span>위 내용을 충분히 이해했으며, 이에 동의합니다' + need + '</span></label>' +
+        '</div></div>';
+      return;
+    }
+
+    h += '<div class="sec-title">' + esc(f.q) + need + '</div>';
+
+    if(f.type === '단답'){
+      h += '<div class="field"><input oninput="CON.ans[\'' + key + '\']=this.value" ' +
+           'placeholder="여기에 적어주세요"></div>';
+    } else if(f.type === '서술'){
+      h += '<div class="field"><textarea style="min-height:100px" ' +
+           'oninput="CON.ans[\'' + key + '\']=this.value" placeholder="자유롭게 적어주세요"></textarea></div>';
+    } else if(f.type === '단일선택'){
+      h += '<div class="card"><div class="card-b">';
+      f.opts.forEach(function(o, j){
+        h += '<label class="ck"><input type="radio" name="' + key + '" ' +
+             'onchange="CON.ans[\'' + key + '\']=' + JSON.stringify(o).replace(/"/g,'&quot;') + '">' +
+             '<span>' + esc(o) + '</span></label>';
+      });
+      h += '</div></div>';
+    } else {
+      h += '<div class="card"><div class="card-b">';
+      f.opts.forEach(function(o, j){
+        h += '<label class="ck"><input type="checkbox" ' +
+             'onchange="conMulti(\'' + key + '\',' + JSON.stringify(o).replace(/"/g,'&quot;') + ',this.checked)">' +
+             '<span>' + esc(o) + '</span></label>';
+      });
+      h += '</div></div>';
+    }
+  });
+
+  h += '<div class="sec-title">서명</div>' +
+    '<div class="card"><div class="card-b">' +
+      '<p style="margin:0 0 8px;font-size:.85rem;color:var(--ink2)">아래 칸에 손가락으로 서명해 주세요.</p>' +
+      '<canvas id="sig" style="width:100%;height:170px;border:2px dashed var(--line);' +
+        'border-radius:12px;background:#fff;touch-action:none;display:block"></canvas>' +
+      '<button class="btn sub" style="margin-top:9px" onclick="sigClear()">↺ 다시 서명</button>' +
+    '</div></div>' +
+    '<button class="btn" style="margin-top:10px" onclick="saveConsent(this)">저장하기</button>' +
+    '<div class="btnrow"><button class="btn sub" style="grid-column:1/3" onclick="closeSheet()">취소</button></div>';
+
+  openSheet(h);
+  setTimeout(sigInit, 60);
+}
+function conMulti(key, val, on){
+  var a = CON.ans[key];
+  if(!(a instanceof Array)) a = [];
+  if(on){ if(a.indexOf(val)<0) a.push(val); }
+  else { var i = a.indexOf(val); if(i>=0) a.splice(i,1); }
+  CON.ans[key] = a;
+}
+var SIG = { cv:null, cx:null, on:false, drawn:false };
+function sigInit(){
+  var cv = $('sig'); if(!cv) return;
+  var rect = cv.getBoundingClientRect();
+  var dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(rect.width*dpr); cv.height = Math.round(rect.height*dpr);
+  var cx = cv.getContext('2d');
+  cx.scale(dpr, dpr);
+  cx.lineWidth = 2.4; cx.lineCap='round'; cx.lineJoin='round'; cx.strokeStyle='#1b1b1f';
+  SIG.cv = cv; SIG.cx = cx; SIG.drawn = false;
+  function pos(e){
+    var r = cv.getBoundingClientRect();
+    var t = (e.touches && e.touches[0]) || e;
+    return [t.clientX - r.left, t.clientY - r.top];
+  }
+  function down(e){ e.preventDefault(); SIG.on=true; SIG.drawn=true; var p=pos(e); cx.beginPath(); cx.moveTo(p[0],p[1]); }
+  function move(e){ if(!SIG.on) return; e.preventDefault(); var p=pos(e); cx.lineTo(p[0],p[1]); cx.stroke(); }
+  function up(){ SIG.on=false; }
+  cv.addEventListener('pointerdown', down);
+  cv.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+  cv.addEventListener('touchstart', down, {passive:false});
+  cv.addEventListener('touchmove', move, {passive:false});
+  cv.addEventListener('touchend', up);
+}
+function sigClear(){
+  if(!SIG.cv) return;
+  SIG.cx.clearRect(0,0,SIG.cv.width,SIG.cv.height);
+  SIG.drawn = false;
+}
+function saveConsent(btn){
+  var miss = null;
+  var answers = CON.list.map(function(f, i){
+    var v = CON.ans['q'+i];
+    if(v instanceof Array) v = v.join(', ');
+    v = (v==null?'':String(v));
+    if(f.need && !v.trim() && f.type!=='안내') miss = miss || f.q;
+    return { q: f.q, v: v };
+  }).filter(function(a, i){ return CON.list[i].type !== '안내'; });
+
+  if(miss){ toast('필수 항목이 비어 있습니다: ' + miss.slice(0,24)); return; }
+  if(!SIG.drawn){ toast('서명을 받아주세요'); return; }
+
+  busy(btn, '저장 중…');
+  var sign = SIG.cv.toDataURL('image/png');
+  call('api_saveConsent',[{ custId:CON.id, shop:CON.shop, form:CON.form,
+                            answers:answers, sign:sign }]).then(function(r){
+    done(btn);
+    if(!r.ok){ toast(r.msg||'저장하지 못했습니다'); return; }
+    toast('저장했습니다');
+    openCustomer(CON.id);
+  }).catch(function(e){ done(btn); fail(e); });
+}
+
+function vOf(id){ var e = $(id); return e ? e.value : undefined; }
+function saveCustomer(id){
+  var p = { id:id, name:$('k-name').value, phone:$('k-phone').value,
+            product:$('k-product').value, total:$('k-total').value, memo:$('k-memo').value,
+            gender:vOf('k-gender'), birth:vOf('k-birth'), staff:vOf('k-staff'),
+            rel:vOf('k-rel'), grade:vOf('k-grade'), tag:vOf('k-tag'),
+            needle:vOf('k-needle'), pigment:vOf('k-pigment'), tone:vOf('k-tone') };
+  Object.keys(p).forEach(function(k){ if(p[k]===undefined) delete p[k]; });
+  toast('저장 중…');
+  call('api_saveCustomer',[p]).then(function(r){
+    if(!r.ok){ toast(r.msg); return; }
+    closeSheet(); toast('저장했습니다'); custSearch();
+  }).catch(fail);
+}
+function askDelCustomer(id, btn){
+  if(btn.dataset.armed==='1'){ delCustomer(id); return; }
+  btn.dataset.armed = '1';
+  btn.textContent = '정말 삭제할까요? 한 번 더 누르세요';
+  setTimeout(function(){
+    if(btn && btn.dataset.armed==='1'){ btn.dataset.armed=''; btn.textContent='고객 삭제'; }
+  }, 5000);
+}
+function delCustomer(id){
+  toast('삭제 중…');
+  call('api_deleteCustomer',[id]).then(function(r){
+    if(!r.ok){ toast(r.msg||'삭제하지 못했습니다'); return; }
+    closeSheet(); toast('삭제했습니다'); custSearch();
+  }).catch(fail);
+}
+function makeFolder(id){
+  toast('폴더 만드는 중…');
+  call('api_customerFolder',[id]).then(function(r){
+    if(!r.ok){ toast(r.msg); return; }
+    toast('만들었습니다'); openCustomer(id);
+  }).catch(fail);
+}
+
+/* ══════════ 매출 ══════════ */
+var SALE = { from:'', to:'', shop:'', period:'month' };
+function saleInit(){
+  var d = new Date();
+  SALE.from = ymd(new Date(d.getFullYear(), d.getMonth(), 1));
+  SALE.to   = ymd(d);
+  SALE.period = 'month';
+}
+function salePick(k){
+  var d = new Date();
+  SALE.period = k;
+  if(k==='today'){ SALE.from = ymd(d); SALE.to = ymd(d); }
+  else if(k==='week'){ SALE.from = ymd(new Date(d.getFullYear(), d.getMonth(), d.getDate()-6)); SALE.to = ymd(d); }
+  else if(k==='month'){ SALE.from = ymd(new Date(d.getFullYear(), d.getMonth(), 1)); SALE.to = ymd(d); }
+  else if(k==='prev'){
+    var f = new Date(d.getFullYear(), d.getMonth()-1, 1);
+    SALE.from = ymd(f); SALE.to = ymd(new Date(d.getFullYear(), d.getMonth(), 0));
+  }
+  else if(k==='year'){ SALE.from = ymd(new Date(d.getFullYear(),0,1)); SALE.to = ymd(d); }
+  renderSale();
+}
+function saleRange(){
+  SALE.period = '';
+  SALE.from = $('sl-f').value || SALE.from;
+  SALE.to   = $('sl-t').value || SALE.to;
+  renderSale();
+}
+function saleShop(v){ SALE.shop = v; renderSale(); }
+function deltaHtml(cur, prev){
+  if(!prev) return '<span class="delta" style="color:var(--muted)">비교 없음</span>';
+  var d = cur - prev;
+  var pct = Math.round(d / prev * 1000) / 10;
+  if(!d) return '<span class="delta" style="color:var(--muted)">변화 없음</span>';
+  return '<span class="delta ' + (d>0?'up':'dn') + '">' + (d>0?'▲':'▼') + ' ' +
+    won(Math.abs(d)) + ' (' + (d>0?'+':'-') + Math.abs(pct) + '%)</span>';
+}
+function renderSale(){
+  var el = $('p-sale');
+  if(!SALE.from) saleInit();
+  SALE.key = 'sale|' + SALE.from + '|' + SALE.to + '|' + (SALE.shop||'');
+  if(pgHit('p-sale', SALE.key)) return;
+  $('ttl').textContent = '매출';
+  $('sub').textContent = SALE.from.slice(2).replace(/-/g,'.') + ' ~ ' + SALE.to.slice(2).replace(/-/g,'.');
+  spin(el);
+  call('api_salesReport',[SALE.from, SALE.to, SALE.shop]).then(function(d){
+    if(!d.ok){ el.innerHTML = '<div class="card"><div class="empty">' + esc(d.msg||'불러오지 못했습니다') + '</div></div>'; return; }
+
+    function seg(k, t){ return '<button class="' + (SALE.period===k?'on':'') + '" onclick="salePick(\'' + k + '\')">' + t + '</button>'; }
+    var h = '<div class="seg">' + seg('today','오늘') + seg('week','최근 7일') +
+            seg('month','이번 달') + seg('prev','지난 달') + seg('year','올해') + '</div>';
+
+    h += '<div class="grid2" style="margin-bottom:10px">' +
+      '<div class="field" style="margin:0"><label>시작</label><input id="sl-f" type="date" value="' + SALE.from + '" onchange="saleRange()"></div>' +
+      '<div class="field" style="margin:0"><label>끝</label><input id="sl-t" type="date" value="' + SALE.to + '" onchange="saleRange()"></div>' +
+    '</div>';
+
+    var shopOpt = '<option value="">전체 샵</option>' + (d.shops||[]).map(function(n){
+      return '<option value="'+esc(n)+'"'+(n===SALE.shop?' selected':'')+'>'+esc(n)+'</option>'; }).join('');
+    h += '<div class="field"><select onchange="saleShop(this.value)">' + shopOpt + '</select></div>';
+
+    /* 핵심 지표 */
+    var rate = d.customers ? Math.round(d.repeat / d.customers * 1000)/10 : 0;
+    h += '<div class="card"><div class="card-b">' +
+      '<div class="lb" style="font-size:.72rem;color:var(--muted);font-weight:600">실 매출액</div>' +
+      '<div style="font-size:1.9rem;font-weight:700;letter-spacing:-.03em;font-variant-numeric:tabular-nums">' +
+        won(d.total) + '<small style="font-size:.9rem;color:var(--muted);margin-left:3px">원</small></div>' +
+      '<div style="margin-top:5px">' + deltaHtml(d.total, d.prevTotal) + '</div>' +
+      '<div style="font-size:.75rem;color:var(--muted);margin-top:3px">직전 동일 기간 (' +
+        esc(d.prevFrom.slice(5).replace('-','/')) + '~' + esc(d.prevTo.slice(5).replace('-','/')) + ') ' +
+        won(d.prevTotal) + '원</div>' +
+      '<div style="border-top:1px solid var(--line);margin-top:10px;padding-top:8px">' +
+        '<div class="kv"><span>네이버 수수료 <span style="color:var(--muted);font-size:.8rem">· ' +
+          (d.feeRate||0) + '%</span></span><b style="color:var(--bad)">− ' + won(d.naverFee||0) + '원</b></div>' +
+        '<div class="kv"><span>카드 수수료 <span style="color:var(--muted);font-size:.8rem">· 신용 ' +
+          (d.creditRate||0) + '% · 체크 ' + (d.debitRate||0) + '%</span></span>' +
+          '<b style="color:var(--bad)">− ' + won(d.cardFee||0) + '원</b></div>' +
+        '<div class="kv"><span style="font-weight:700">실수령액</span>' +
+          '<b style="font-weight:700">' + won(d.net||d.total) + '원</b></div>' +
+      '</div>' +
+      (d.npayMixed ? '<div style="font-size:.75rem;color:var(--muted);margin-top:6px">' +
+        '카드와 네이버페이를 같이 쓴 예약 ' + d.npayMixed + '건은 네이버 결제액을 안 적어서 수수료에서 빠졌습니다.</div>' : '') +
+      '</div></div>';
+
+    h += '<div class="tiles">' +
+      '<div class="tile"><div class="lb">총 고객수</div><div class="vl">' + d.customers + '<small>명</small></div></div>' +
+      '<div class="tile"><div class="lb">시술 건수</div><div class="vl">' + d.count + '<small>건</small></div></div>' +
+    '</div>' +
+    '<div class="tiles">' +
+      '<div class="tile"><div class="lb">재방문율</div><div class="vl">' + rate + '<small>%</small></div>' +
+        '<div style="font-size:.72rem;color:var(--muted);margin-top:2px">' + d.repeat + '명 재방문</div></div>' +
+      '<div class="tile"><div class="lb">1인당 평균</div><div class="vl" style="font-size:1.05rem">' +
+        won(d.avg) + '<small>원</small></div></div>' +
+    '</div>';
+
+    /* 일자별 추이 */
+    var days = Object.keys(d.byDay||{}).sort();
+    if(days.length){
+      var mx = 1; days.forEach(function(k){ if(d.byDay[k]>mx) mx=d.byDay[k]; });
+      h += '<div class="sec-title">기간 내 추이</div><div class="card"><div class="card-b">' +
+        '<div class="bars">';
+      days.forEach(function(k){
+        h += '<div class="b"><i style="height:' + Math.round(d.byDay[k]/mx*100) + '%" title="' +
+             k + ' ' + won(d.byDay[k]) + '원"></i><span>' + k.slice(8) + '</span></div>';
+      });
+      h += '</div></div></div>';
+    }
+
+    /* 샵별 */
+    var sn = Object.keys(d.byShop||{});
+    if(sn.length > 1 || (sn.length && !SALE.shop)){
+      h += '<div class="sec-title">샵별 매출</div><div class="card"><div class="card-b">';
+      sn.forEach(function(n){
+        h += '<div class="kv"><span>' + esc(shopShort(n)) + '</span><b>' + won(d.byShop[n]) + '원</b></div>';
+      });
+      h += '</div></div>';
+    }
+
+    /* 시술별 */
+    if(d.byItem && d.byItem.length){
+      h += '<div class="sec-title">시술별 매출</div><div class="card"><div class="card-b"><div class="dtwrap"><table class="dt">' +
+        '<tr><th>시술</th><th class="r">건수</th><th class="r">매출</th><th class="r">비중</th></tr>';
+      d.byItem.slice(0,30).forEach(function(x){
+        var pc = d.total ? Math.round(x.total/d.total*1000)/10 : 0;
+        h += '<tr><td>' + esc(x.name) + '</td><td class="r">' + x.n + '</td>' +
+             '<td class="r">' + won(x.total) + '</td><td class="r">' + pc + '%</td></tr>';
+      });
+      h += '</table></div></div></div>';
+    }
+
+    /* 요일별 */
+    var DOW = ['일','월','화','수','목','금','토'];
+    if(d.byDow){
+      var dmax = 1; DOW.forEach(function(_,i){ if((d.byDow[i]||0)>dmax) dmax=d.byDow[i]; });
+      h += '<div class="sec-title">요일별 매출</div><div class="card"><div class="card-b">';
+      DOW.forEach(function(t,i){
+        var v = d.byDow[i]||0;
+        h += '<div style="display:flex;align-items:center;gap:9px;padding:5px 0">' +
+          '<span style="width:22px;font-weight:700;font-size:.85rem">' + t + '</span>' +
+          '<span style="flex:1;height:9px;background:var(--line);border-radius:5px;overflow:hidden">' +
+            '<i style="display:block;height:100%;width:' + Math.round(v/dmax*100) + '%;background:var(--plum)"></i></span>' +
+          '<b style="font-size:.82rem;width:88px;text-align:right;font-variant-numeric:tabular-nums">' + won(v) + '</b></div>';
+      });
+      h += '</div></div>';
+    }
+
+    /* 결제수단별 */
+    var pk = Object.keys(d.byPay||{}).filter(function(k){ return k; });
+    if(pk.length){
+      h += '<div class="sec-title">결제수단별</div><div class="card"><div class="card-b">';
+      pk.sort(function(a,b){ return d.byPay[b]-d.byPay[a]; }).forEach(function(k){
+        var pc = d.total ? Math.round(d.byPay[k]/d.total*1000)/10 : 0;
+        h += '<div class="kv"><span>' + esc(k) + ' <span style="color:var(--muted);font-size:.8rem">· ' + pc + '%</span></span>' +
+             '<b>' + won(d.byPay[k]) + '원</b></div>';
+      });
+      h += '</div></div>';
+    }
+
+    /* 매출 내역 */
+    h += '<div class="sec-title">매출 내역 · ' + d.list.length + '건' +
+         (d.count > d.list.length ? ' (앞 ' + d.list.length + '건)' : '') + '</div>';
+    if(!d.list.length){
+      h += '<div class="card"><div class="empty">이 기간에 등록된 매출이 없습니다</div></div>';
+    } else {
+      h += '<div class="card"><div class="card-b"><div class="dtwrap"><table class="dt">' +
+        '<tr><th>날짜</th><th>고객</th><th>시술</th><th class="r">금액</th></tr>';
+      d.list.forEach(function(g){
+        h += '<tr><td>' + esc(String(g.date).slice(5).replace('-','/')) + '</td>' +
+          '<td>' + esc(g.name||'-') + (g.staff ? '<br><span style="color:var(--muted);font-size:.74rem">' + esc(g.staff) + '</span>' : '') + '</td>' +
+          '<td>' + esc((g.items&&g.items.length?g.items.join(', '):'-')) + (g.pay ? '<br><span style="color:var(--muted);font-size:.74rem">' + esc(g.pay) + '</span>' : '') + '</td>' +
+          '<td class="r">' + won(g.amount) + '</td></tr>';
+      });
+      h += '</table></div></div></div>';
+    }
+
+    h += '<div class="sec-title">더 보기</div><div class="card"><div class="card-b">' +
+      '<button class="btn sub" style="margin-bottom:9px" onclick="openStaff()">👥 직원별 결산</button>' +
+      '<button class="btn sub" style="margin-bottom:9px" onclick="openCash()">💵 수입 · 지출 (순수익)</button>' +
+      '<button class="btn sub" onclick="openUsage()">📊 이용률 분석 (빈 시간 찾기)</button>' +
+      '</div></div>';
+
+    h += '<p style="font-size:.8rem;color:var(--muted);padding:0 4px">' +
+      '예약을 눌러 [결제 등록]으로 넣은 금액만 집계됩니다. 재방문율은 이 기간 이전에도 결제 기록이 있는 고객 비율입니다.</p>';
+
+    el.innerHTML = h;
+    pgDone('p-sale', SALE.key);
+  }).catch(fail);
+}
+
+/* ── 선불 · 포인트 ── */
+var PP = { id:'', type:'선불', name:'' };
+function openPp(id, type){
+  PP.id = id; PP.type = type;
+  var c = (APP.cust && APP.cust.customer) || {};
+  PP.name = c.name || '';
+  var cur = (type==='포인트') ? (c.point||0) : (c.prepaid||0);
+  openSheet(
+    '<h2>' + esc(type) + '</h2><p class="sub">' + esc(PP.name) + ' · 현재 ' + won(cur) + (type==='포인트'?'P':'원') + '</p>' +
+    '<div class="seg" id="pp-way">' +
+      '<button class="on" onclick="ppWay(this,\'충전\')">' + (type==='포인트'?'적립':'충전') + '</button>' +
+      '<button onclick="ppWay(this,\'사용\')">사용</button>' +
+      '<button onclick="ppWay(this,\'조정\')">잔액 맞추기</button>' +
+    '</div>' +
+    '<div class="field"><label id="pp-lb">충전할 금액</label>' +
+      '<input id="pp-amt" type="number" inputmode="numeric" placeholder="0"></div>' +
+    '<div class="field"><label>메모</label><input id="pp-memo" placeholder="(선택)"></div>' +
+    '<button class="btn" onclick="savePp(this)">저장</button>' +
+    '<div id="pp-log"><div class="spin"></div></div>' +
+    '<div class="btnrow" style="margin-top:10px"><button class="btn sub" style="grid-column:1/3" ' +
+      'onclick="openCustomer(\'' + esc(id) + '\')">← 고객 정보로</button></div>'
+  );
+  PP.way = '충전';
+  loadPpLog();
+}
+function ppWay(btn, w){
+  PP.way = w;
+  var box = $('pp-way'); if(box) [...box.children].forEach(function(b){ b.classList.toggle('on', b===btn); });
+  var lb = $('pp-lb');
+  if(lb) lb.textContent = (w==='조정') ? '맞출 잔액 (이 금액이 되도록)' :
+    (w==='사용' ? '사용할 금액' : (PP.type==='포인트'?'적립할 포인트':'충전할 금액'));
+}
+function loadPpLog(){
+  call('api_ppLog',[PP.id]).then(function(r){
+    var box = $('pp-log'); if(!box) return;
+    var list = (r.list||[]).filter(function(g){ return g.type===PP.type; });
+    if(!list.length){ box.innerHTML = '<div class="sec-title">내역</div><div class="card"><div class="empty">아직 없습니다</div></div>'; return; }
+    var h = '<div class="sec-title">내역 · ' + list.length + '건</div><div class="card"><div class="card-b">';
+    list.forEach(function(g){
+      var plus = g.amount >= 0;
+      h += '<div class="kv"><span>' + esc(String(g.at).slice(2,16)) + ' <b>' + esc(g.way) + '</b>' +
+        (g.memo ? ' <span style="color:var(--muted);font-size:.8rem">' + esc(g.memo) + '</span>' : '') + '</span>' +
+        '<b style="color:' + (plus?'var(--good)':'var(--bad)') + '">' + (plus?'+':'') + won(g.amount) +
+        ' <span style="color:var(--muted);font-weight:500">→ ' + won(g.left) + '</span></b></div>';
+    });
+    box.innerHTML = h + '</div></div>';
+  }).catch(function(){});
+}
+function savePp(btn){
+  var amt = $('pp-amt').value;
+  if(!Number(amt)){ toast('금액을 넣어주세요'); return; }
+  busy(btn,'저장 중…');
+  call('api_savePp',[{custId:PP.id, type:PP.type, way:PP.way, amount:amt, memo:$('pp-memo').value}]).then(function(r){
+    done(btn);
+    if(!r.ok){ toast(r.msg||'저장하지 못했습니다'); return; }
+    toast('남은 ' + PP.type + ' ' + won(r.left) + (PP.type==='포인트'?'P':'원'));
+    call('api_customer',[PP.id]).then(function(c){ if(c.ok) APP.cust = c; }).catch(function(){});
+    $('pp-amt').value = '';
+    loadPpLog();
+  }).catch(function(e){ done(btn); fail(e); });
+}
+
+/* ── 간단일정 (시간 막기) ── */
+function openBlock(date, b){
+  var sh = (APP.boot.shops||[]).map(function(x){ return x.name; });
+  b = b || {};
+  openSheet(
+    '<h2>' + (b.id ? '일정 고치기' : '간단일정 추가') + '</h2>' +
+    '<p class="sub">고객 예약이 아닌 개인일정·휴식·외출을 넣어 그 시간을 막습니다</p>' +
+    '<div class="field"><label>제목</label><input id="bl-t" value="' + esc(b.title||'') + '" placeholder="예) 점심, 외출, 재료 수령"></div>' +
+    '<div class="field"><label>날짜</label><input id="bl-d" type="date" value="' + esc(b.date||date) + '"></div>' +
+    '<div class="grid2">' +
+      '<div class="field"><label>시작</label><input id="bl-s" type="time" value="' + esc(b.start||'') + '"></div>' +
+      '<div class="field"><label>끝</label><input id="bl-e" type="time" value="' + esc(b.end||'') + '"></div>' +
+    '</div>' +
+    '<div class="field"><label>샵 (선택)</label><select id="bl-shop">' + selOpts(sh, b.shop, '전체') + '</select></div>' +
+    '<div class="field"><label>메모</label><input id="bl-m" value="' + esc(b.memo||'') + '" placeholder="(선택)"></div>' +
+    '<button class="btn" onclick="saveBlock(this,' + (b.id ? JSON.stringify(b.id) : 'null') + ')">저장</button>' +
+    (b.id ? '<button class="btn danger" style="margin-top:9px" onclick="askDelBlock(' + JSON.stringify(b.id) + ',this)">이 일정 삭제</button>' : '') +
+    '<div class="btnrow"><button class="btn sub" style="grid-column:1/3" onclick="closeSheet()">취소</button></div>'
+  );
+}
+function saveBlock(btn, id){
+  var p = { id:id||'', title:$('bl-t').value, date:$('bl-d').value,
+            start:$('bl-s').value, end:$('bl-e').value,
+            shop:$('bl-shop').value, memo:$('bl-m').value };
+  if(!p.date){ toast('날짜를 골라주세요'); return; }
+  if(!p.start){ toast('시작 시간을 넣어주세요'); return; }
+  busy(btn,'저장 중…');
+  call('api_saveBlock',[p]).then(function(r){
+    done(btn);
+    if(!r.ok){ toast(r.msg||'저장하지 못했습니다'); return; }
+    closeSheet(); toast('저장했습니다');
+    APP.day = p.date; renderBook();
+  }).catch(function(e){ done(btn); fail(e); });
+}
+function askDelBlock(id, btn){
+  if(btn.dataset.armed==='1'){
+    call('api_deleteBlock',[id]).then(function(r){
+      if(!r.ok){ toast(r.msg||'삭제하지 못했습니다'); return; }
+      closeSheet(); toast('삭제했습니다 (휴지통에 30일 보관)'); renderBook();
+    }).catch(fail);
+    return;
+  }
+  btn.dataset.armed='1'; btn.textContent='정말 삭제할까요? 한 번 더';
+  setTimeout(function(){ if(btn&&btn.dataset.armed==='1'){ btn.dataset.armed=''; btn.textContent='이 일정 삭제'; } },5000);
+}
+function blockHtml(b){
+  return '<button class="bk" style="background:var(--bg)" onclick=\'openBlock("",' + JSON.stringify(b).replace(/'/g,'&#39;') + ')\'>' +
+    '<span class="bk-bar" style="background:var(--muted)"></span>' +
+    '<span class="bk-m"><span class="bk-n">🔒 ' + esc(b.title) + '</span>' +
+    '<span class="bk-p">' + esc(b.start) + (b.end?' ~ '+esc(b.end):'') +
+      (b.memo?' · '+esc(b.memo):'') + '</span></span></button>';
+}
+/* ── 문자 발송 내역 ── */
+function openSendLog(n){
+  openSheet('<div class="spin"></div>');
+  call('api_sendLog',[n||80]).then(function(r){
+    if(!r.ok){ closeSheet(); toast(r.msg||'불러오지 못했습니다'); return; }
+    var h = '<h2>문자 발송 내역</h2><p class="sub">전체 ' + r.total + '건 중 최근 ' + r.list.length + '건</p>';
+    if(!r.list.length){
+      h += '<div class="card"><div class="empty">아직 보낸 문자가 없습니다</div></div>';
+    } else {
+      h += '<div class="card">';
+      r.list.forEach(function(g, i){
+        var ok = /성공|완료|OK|ok/.test(g.result);
+        var test = /테스트/.test(g.result);
+        h += '<div class="bk" style="cursor:pointer;align-items:flex-start" onclick="toggleMsg(' + i + ')">' +
+          '<span class="bk-bar' + (shopIdx(g.shop)===2?' s2':'') + '"></span>' +
+          '<span class="bk-m">' +
+            '<span class="bk-n">' + esc(g.name||'-') + ' <span style="color:var(--muted);font-weight:500">' + esc(g.phone||'') + '</span></span>' +
+            '<span class="bk-p">' + esc(g.at) + ' · ' + esc(g.type||'') + ' · ' + esc(g.ch||'') + '</span>' +
+            '<span id="msg' + i + '" style="display:none;white-space:pre-wrap;font-size:.8rem;' +
+              'color:var(--ink2);background:var(--bg);border-radius:9px;padding:9px;margin-top:7px;line-height:1.55">' +
+              esc(g.msg) + '</span>' +
+          '</span>' +
+          '<span class="bk-r"><span class="tag ' + (test?'warn':(ok?'good':'bad')) + '">' +
+            esc(g.result||'?') + '</span></span></div>';
+      });
+      h += '</div>';
+      h += '<p style="font-size:.8rem;color:var(--muted);padding:0 4px">한 줄을 누르면 실제로 나간 문구가 펼쳐집니다.</p>';
+      if(r.total > r.list.length){
+        h += '<button class="btn sub" onclick="openSendLog(' + (r.list.length+120) + ')">더 보기</button>';
+      }
+    }
+    h += '<div class="btnrow" style="margin-top:10px"><button class="btn sub" style="grid-column:1/3" onclick="closeSheet()">닫기</button></div>';
+    openSheet(h);
+  }).catch(function(e){ closeSheet(); fail(e); });
+}
+function toggleMsg(i){
+  var e = $('msg'+i); if(!e) return;
+  e.style.display = (e.style.display==='none' ? 'block' : 'none');
+}
+
+/* ── 직원별 결산 ── */
+function openStaff(){
+  openSheet('<div class="spin"></div>');
+  call('api_staffReport',[SALE.from, SALE.to, SALE.shop]).then(function(d){
+    if(!d.ok){ closeSheet(); toast(d.msg||'불러오지 못했습니다'); return; }
+    var h = '<h2>직원별 결산</h2><p class="sub">' + esc(d.from) + ' ~ ' + esc(d.to) +
+      (d.shop?' · '+esc(shopShort(d.shop)):'') + '</p>';
+    if(!d.list.length){
+      h += '<div class="card"><div class="empty">이 기간에 등록된 매출이 없습니다</div></div>';
+    } else {
+      h += '<div class="card"><div class="card-b"><div class="kv">' +
+        '<span style="font-weight:700">전체 합계</span>' +
+        '<b style="color:var(--plum);font-weight:700">' + won(d.total) + '원</b></div></div></div>';
+      d.list.forEach(function(x){
+        var pct = d.total ? Math.round(x.total/d.total*1000)/10 : 0;
+        h += '<div class="sec-title">' + esc(x.staff) + ' · ' + pct + '%</div>' +
+          '<div class="card"><div class="card-b">' +
+          '<div class="kv"><span style="font-weight:700">실매출액</span>' +
+            '<b style="color:var(--plum);font-weight:700;font-size:1.05rem">' + won(x.total) + '원</b></div>' +
+          '<div class="kv"><span>시술 건수 · 고객수</span><b>' + x.n + '건 · ' + x.customers + '명</b></div>' +
+          (x.rate ? '<div class="kv"><span>인센티브 (' + x.rate + '%)</span>' +
+            '<b style="color:var(--good)">' + won(x.incentive) + '원</b></div>' : '');
+        d.pays.forEach(function(k){
+          if(!x.pay[k]) return;
+          h += '<div class="kv"><span style="color:var(--muted)">' + esc(k) + '</span><b>' + won(x.pay[k]) + '원</b></div>';
+        });
+        if(x.top.length){
+          h += '<div style="font-size:.76rem;color:var(--muted);margin:9px 0 3px;font-weight:700">많이 한 시술</div>';
+          x.top.forEach(function(i){
+            h += '<div class="kv"><span style="font-size:.85rem">' + esc(i.name) + '</span><b style="font-size:.85rem">' + won(i.total) + '</b></div>';
+          });
+        }
+        h += '</div></div>';
+      });
+    }
+    if(!d.staffList.length){
+      h += '<p style="font-size:.8rem;color:var(--muted);padding:0 4px">담당자 명단이 비어 있습니다. 구글시트 <b>설정</b> 탭의 [담당자 명단]에 이름을 쉼표로 넣어주세요.</p>';
+    }
+    h += '<p style="font-size:.8rem;color:var(--muted);padding:0 4px">인센티브는 설정 탭 [직원 인센티브(%)]에 <b>원장:30,김실장:20</b> 형식으로 넣으면 계산됩니다. 기간은 매출 탭에서 고른 기간을 씁니다.</p>' +
+      '<div class="btnrow"><button class="btn sub" style="grid-column:1/3" onclick="closeSheet()">닫기</button></div>';
+    openSheet(h);
+  }).catch(function(e){ closeSheet(); fail(e); });
+}
+
+/* ── 이용률 분석 ── */
+function openUsage(){
+  openSheet('<div class="spin"></div>');
+  call('api_usage',[SALE.from, SALE.to, SALE.shop]).then(function(d){
+    if(!d.ok){ closeSheet(); toast(d.msg||'불러오지 못했습니다'); return; }
+    var DW = ['일','월','화','수','목','금','토'];
+    var h = '<h2>이용률 분석</h2><p class="sub">' + esc(d.from) + ' ~ ' + esc(d.to) +
+      ' · 예약 ' + d.total + '건</p>';
+
+    h += '<div class="sec-title">요일별</div><div class="card"><div class="card-b">';
+    var dmax = 1; d.dow.forEach(function(v){ if(v>dmax) dmax=v; });
+    DW.forEach(function(t,i){
+      var v = d.dow[i]||0, days = d.dowDays[i]||0;
+      var avg = days ? Math.round(v/days*10)/10 : 0;
+      h += '<div style="display:flex;align-items:center;gap:9px;padding:5px 0">' +
+        '<span style="width:22px;font-weight:700;font-size:.85rem;' +
+          (i===0?'color:var(--bad)':(i===6?'color:var(--navy)':'')) + '">' + t + '</span>' +
+        '<span style="flex:1;height:9px;background:var(--line);border-radius:5px;overflow:hidden">' +
+          '<i style="display:block;height:100%;width:' + Math.round(v/dmax*100) + '%;background:var(--plum)"></i></span>' +
+        '<b style="font-size:.8rem;width:96px;text-align:right">' + v + '건 · 하루 ' + avg + '</b></div>';
+    });
+    h += '</div></div>';
+
+    h += '<div class="sec-title">시간대별</div><div class="card"><div class="card-b">';
+    var hmax = 1; d.hours.forEach(function(x){ if((d.hourTot[x]||0)>hmax) hmax=d.hourTot[x]; });
+    d.hours.forEach(function(x){
+      var v = d.hourTot[x]||0;
+      h += '<div style="display:flex;align-items:center;gap:9px;padding:4px 0">' +
+        '<span style="width:36px;font-weight:700;font-size:.82rem">' + x + '시</span>' +
+        '<span style="flex:1;height:9px;background:var(--line);border-radius:5px;overflow:hidden">' +
+          '<i style="display:block;height:100%;width:' + Math.round(v/hmax*100) + '%;background:var(--navy)"></i></span>' +
+        '<b style="font-size:.8rem;width:44px;text-align:right">' + v + '건</b></div>';
+    });
+    h += '</div></div>';
+
+    h += '<div class="sec-title">요일 × 시간</div><div class="card"><div class="card-b"><div class="dtwrap">' +
+      '<table class="dt"><tr><th></th>' + DW.map(function(t){ return '<th class="r">'+t+'</th>'; }).join('') + '</tr>';
+    d.hours.forEach(function(x){
+      h += '<tr><td style="font-weight:700">' + x + '시</td>';
+      for(var w=0;w<7;w++){
+        var v = d.grid[w+'|'+x]||0;
+        var a = d.maxCell ? (v/d.maxCell) : 0;
+        h += '<td class="r" style="background:rgba(123,63,97,' + (a*0.55).toFixed(2) + ');' +
+             (a>0.6?'color:#fff;':'') + 'font-weight:' + (v?'700':'400') + '">' + (v||'') + '</td>';
+      }
+      h += '</tr>';
+    });
+    h += '</table></div></div></div>' +
+      '<p style="font-size:.8rem;color:var(--muted);padding:0 4px">' +
+        '진한 칸일수록 예약이 몰리는 시간입니다. 빈 칸은 아직 예약이 없던 시간이에요. ' +
+        '영업 시간은 구글시트 <b>설정</b> 탭의 [영업 시작시각]·[영업 종료시각]을 따릅니다.</p>' +
+      '<div class="btnrow"><button class="btn sub" style="grid-column:1/3" onclick="closeSheet()">닫기</button></div>';
+    openSheet(h);
+  }).catch(function(e){ closeSheet(); fail(e); });
+}
+
+/* ── 수입 · 지출 ── */
+var CASH = { from:'', to:'' };
+function openCash(){ switchTab('cash'); }
+function renderCash(){
+  var el = $('p-cash');
+  if(!CASH.from){ CASH.from = SALE.from || ymd(new Date(new Date().getFullYear(), new Date().getMonth(), 1)); CASH.to = SALE.to || ymd(new Date()); }
+  CASH.key = 'cash|' + CASH.from + '|' + CASH.to;
+  if(pgHit('p-cash', CASH.key)) return;
+  $('ttl').textContent = '지출';
+  $('sub').textContent = CASH.from.slice(2).replace(/-/g,'.') + ' ~ ' + CASH.to.slice(2).replace(/-/g,'.');
+  el.innerHTML = '<div class="spin"></div>';
+  call('api_cash',[CASH.from, CASH.to]).then(function(d){
+    if(!d.ok){ el.innerHTML = '<div class="card"><div class="empty">' + esc(d.msg||'불러오지 못했습니다') + '</div></div>'; return; }
+    CASH.d = d;
+    $('sub').textContent = d.from.slice(2).replace(/-/g,'.') + ' ~ ' + d.to.slice(2).replace(/-/g,'.');
+    var h = '<div class="grid2" style="margin-bottom:10px">' +
+        '<div class="field" style="margin:0"><label>시작</label><input type="date" value="' + d.from + '" onchange="CASH.from=this.value;renderCash()"></div>' +
+        '<div class="field" style="margin:0"><label>끝</label><input type="date" value="' + d.to + '" onchange="CASH.to=this.value;renderCash()"></div>' +
+      '</div>' +
+      '<div class="card"><div class="card-b">' +
+        '<div class="kv"><span>시술 매출</span><b>' + won(d.sales) + '원</b></div>' +
+        '<div class="kv"><span>네이버 수수료 <span style="color:var(--muted);font-size:.8rem">· ' + (d.feeRate||0) + '%</span></span>' +
+          '<b style="color:var(--bad)">− ' + won(d.naverFee||0) + '원</b></div>' +
+        '<div class="kv"><span>카드 수수료 <span style="color:var(--muted);font-size:.8rem">· 신용 ' + (d.creditRate||0) +
+          '% · 체크 ' + (d.debitRate||0) + '%</span></span>' +
+          '<b style="color:var(--bad)">− ' + won(d.cardFee||0) + '원</b></div>' +
+        '<div class="kv"><span>그 밖의 수입</span><b>' + won(d.income) + '원</b></div>' +
+        '<div class="kv"><span>지출</span><b style="color:var(--bad)">− ' + won(d.expense) + '원</b></div>' +
+        '<div class="kv" style="border-top:2px solid var(--line);margin-top:4px;padding-top:9px">' +
+          '<span style="font-weight:700">순수익</span>' +
+          '<b style="color:' + (d.net>=0?'var(--plum)':'var(--bad)') + ';font-weight:700;font-size:1.1rem">' +
+            won(d.net) + '원</b></div>' +
+      '</div></div>' +
+      (d.npayMixed ? '<p style="font-size:.8rem;color:var(--muted);padding:4px">카드와 네이버페이를 같이 쓴 예약 ' + d.npayMixed +
+         '건은 네이버 결제액을 아직 안 적어서 수수료에서 빠졌습니다. 결제 등록 화면에서 넣어주세요.</p>' : '') +
+      '<button class="btn" style="margin-top:10px" onclick="openCashAdd()">＋ 수입·지출 등록</button>';
+
+    var ak = Object.keys(d.byAcct||{}).sort(function(a,b){ return d.byAcct[b]-d.byAcct[a]; });
+    if(ak.length){
+      h += '<div class="sec-title">계정별 지출</div><div class="card"><div class="card-b">';
+      ak.forEach(function(k){
+        var pc = d.expense ? Math.round(d.byAcct[k]/d.expense*1000)/10 : 0;
+        h += '<div class="kv"><span>' + esc(k) + ' <span style="color:var(--muted);font-size:.8rem">· ' + pc + '%</span></span>' +
+             '<b>' + won(d.byAcct[k]) + '원</b></div>';
+      });
+      h += '</div></div>';
+    }
+
+    h += '<div class="sec-title">내역 · ' + d.list.length + '건</div>';
+    if(!d.list.length){
+      h += '<div class="card"><div class="empty">이 기간에 등록한 내역이 없습니다</div></div>';
+    } else {
+      h += '<div class="card">';
+      d.list.forEach(function(g){
+        var isIn = g.kind==='수입';
+        h += '<div class="bk" style="cursor:pointer" onclick="askDelCash(' + JSON.stringify(g.id) + ',this)">' +
+          '<span class="bk-bar" style="background:' + (isIn?'var(--good)':'var(--bad)') + '"></span>' +
+          '<span class="bk-m"><span class="bk-n">' + esc(g.acct||g.kind) +
+            (g.note?' <span style="font-weight:500;color:var(--muted)">'+esc(g.note)+'</span>':'') + '</span>' +
+          '<span class="bk-p">' + esc(String(g.date).slice(5).replace('-','/')) +
+            (g.pay?' · '+esc(g.pay):'') + (g.shop?' · '+esc(shopShort(g.shop)):'') + '</span></span>' +
+          '<span class="bk-r"><b style="color:' + (isIn?'var(--good)':'var(--bad)') + '">' +
+            (isIn?'+':'−') + won(g.amount) + '</b></span></div>';
+      });
+      h += '</div><p style="font-size:.8rem;color:var(--muted);padding:0 4px">줄을 누르면 삭제할 수 있습니다.</p>';
+    }
+    el.innerHTML = h;
+    pgDone('p-cash', CASH.key);
+  }).catch(fail);
+}
+function openCashAdd(){
+  var d = CASH.d || {};
+  openSheet(
+    '<h2>수입 · 지출 등록</h2>' +
+    '<div class="seg" id="cs-kind">' +
+      '<button onclick="csKind(this,\'수입\')">수입</button>' +
+      '<button class="on" onclick="csKind(this,\'지출\')">지출</button>' +
+    '</div>' +
+    '<div class="grid2">' +
+      '<div class="field"><label>날짜</label><input id="cs-d" type="date" value="' + ymd(new Date()) + '"></div>' +
+      '<div class="field"><label>금액</label><input id="cs-a" type="number" inputmode="numeric" placeholder="0"></div>' +
+    '</div>' +
+    '<div class="field"><label>계정</label><select id="cs-acct">' + selOpts(d.accounts||[], '', '선택 안 함') + '</select></div>' +
+    '<div class="field"><label>내용</label><input id="cs-n" placeholder="예) 색소 5개 구매"></div>' +
+    '<div class="grid2">' +
+      '<div class="field"><label>결제수단</label><select id="cs-p">' + selOpts(d.payList||[], '', '선택 안 함') + '</select></div>' +
+      '<div class="field"><label>샵</label><select id="cs-s">' + selOpts(d.shops||[], '', '전체') + '</select></div>' +
+    '</div>' +
+    '<div class="field"><label>메모</label><input id="cs-m" placeholder="(선택)"></div>' +
+    '<button class="btn" onclick="saveCash(this)">저장</button>' +
+    '<div class="btnrow"><button class="btn sub" style="grid-column:1/3" onclick="closeSheet()">← 목록으로</button></div>'
+  );
+  CASH.kind = '지출';
+}
+function csKind(btn,k){
+  CASH.kind = k;
+  var b = $('cs-kind'); if(b) [...b.children].forEach(function(x){ x.classList.toggle('on', x===btn); });
+}
+function saveCash(btn){
+  var p = { kind:CASH.kind||'지출', date:$('cs-d').value, amount:$('cs-a').value,
+            acct:$('cs-acct').value, note:$('cs-n').value,
+            pay:$('cs-p').value, shop:$('cs-s').value, memo:$('cs-m').value };
+  if(!Number(p.amount)){ toast('금액을 넣어주세요'); return; }
+  busy(btn,'저장 중…');
+  call('api_saveCash',[p]).then(function(r){
+    done(btn);
+    if(!r.ok){ toast(r.msg||'저장하지 못했습니다'); return; }
+    toast('등록했습니다'); closeSheet(); renderCash();
+  }).catch(function(e){ done(btn); fail(e); });
+}
+function askDelCash(id, el){
+  if(el.dataset.armed==='1'){
+    call('api_deleteCash',[id]).then(function(r){
+      if(!r.ok){ toast(r.msg||'삭제하지 못했습니다'); return; }
+      toast('삭제했습니다 (휴지통에 30일 보관)'); renderCash();
+    }).catch(fail);
+    return;
+  }
+  el.dataset.armed='1';
+  var old = el.style.background; el.style.background='rgba(163,58,52,.12)';
+  toast('한 번 더 누르면 삭제됩니다');
+  setTimeout(function(){ if(el){ el.dataset.armed=''; el.style.background=old; } },4000);
+}
+
+/* ── 휴지통 ── */
+var TRASH = { kind:'' };
+function openTrash(kind){
+  if(kind!==undefined) TRASH.kind = kind;
+  openSheet('<div class="spin"></div>');
+  call('api_trash',[TRASH.kind]).then(function(d){
+    if(!d.ok){ closeSheet(); toast(d.msg||'불러오지 못했습니다'); return; }
+    var h = '<h2>휴지통</h2><p class="sub">삭제한 내역을 30일 동안 보관합니다</p>';
+    var kinds = ['예약','고객','매출','간단일정','수입지출'];
+    h += '<div class="seg">' +
+      '<button class="' + (TRASH.kind===''?'on':'') + '" onclick="openTrash(\'\')">전체</button>' +
+      kinds.map(function(k){
+        return '<button class="' + (TRASH.kind===k?'on':'') + '" onclick="openTrash(' +
+          JSON.stringify(k).replace(/"/g,'&quot;') + ')">' + k + '</button>';
+      }).join('') + '</div>';
+    if(!d.list.length){
+      h += '<div class="card"><div class="empty">비어 있습니다</div></div>';
+    } else {
+      h += '<div class="card">';
+      d.list.forEach(function(g){
+        h += '<div class="bk" style="align-items:center">' +
+          '<span class="bk-bar" style="background:var(--muted)"></span>' +
+          '<span class="bk-m"><span class="bk-n">' + esc(g.summary||g.key) + '</span>' +
+          '<span class="bk-p">' + esc(g.kind) + ' · ' + esc(String(g.at).slice(2,16)) + '</span></span>' +
+          '<span class="bk-r"><button class="btn sub" style="padding:6px 10px;font-size:.78rem" ' +
+            'onclick="restoreTrash(' + g.row + ',this)">되돌리기</button></span></div>';
+      });
+      h += '</div>';
+      if(d.total > d.list.length) h += '<p style="font-size:.8rem;color:var(--muted);padding:0 4px">전체 ' + d.total + '건 중 최근 ' + d.list.length + '건</p>';
+    }
+    h += '<p style="font-size:.8rem;color:var(--muted);padding:0 4px">' +
+      '되돌리면 원래 시트 맨 아래에 다시 추가됩니다. 30일이 지난 것은 자동으로 사라집니다.</p>' +
+      '<div class="btnrow"><button class="btn sub" style="grid-column:1/3" onclick="closeSheet()">닫기</button></div>';
+    openSheet(h);
+  }).catch(function(e){ closeSheet(); fail(e); });
+}
+function restoreTrash(row, btn){
+  busy(btn,'…');
+  call('api_restoreTrash',[row]).then(function(r){
+    done(btn);
+    if(!r.ok){ toast(r.msg||'되돌리지 못했습니다'); return; }
+    toast(r.kind + ' 되돌렸습니다'); openTrash();
+  }).catch(function(e){ done(btn); fail(e); });
+}
+/* ── 상담지 · 동의서 양식 보기 ── */
+function openFormList(){
+  openSheet('<div class="spin"></div>');
+  call('api_forms',['']).then(function(r){
+    if(!r.ok){ closeSheet(); toast(r.msg||'불러오지 못했습니다'); return; }
+    var byShop = {};
+    (r.all||[]).forEach(function(f){
+      var k = f.shop || '공통';
+      if(!byShop[k]) byShop[k] = [];
+      byShop[k].push(f);
+    });
+    var h = '<h2>상담지 · 동의서 양식</h2>' +
+      '<p class="sub">고객 정보 화면에서 [상담지 받기] 누르면 이 문항이 나옵니다</p>';
+    Object.keys(byShop).forEach(function(k){
+      h += '<div class="sec-title">' + esc(shopShort(k)) + ' · ' + esc(byShop[k][0].form||'') +
+           ' (' + byShop[k].length + '문항)</div><div class="card"><div class="card-b">';
+      byShop[k].forEach(function(f, i){
+        h += '<div style="padding:9px 0;border-bottom:1px solid var(--line)">' +
+          '<div style="font-size:.87rem;font-weight:600;line-height:1.5">' +
+            (i+1) + '. ' + esc(f.q.length>90 ? f.q.slice(0,90)+'…' : f.q) +
+            (f.need ? ' <span style="color:var(--bad)">*</span>' : '') + '</div>' +
+          '<div style="font-size:.76rem;color:var(--muted);margin-top:3px">' + esc(f.type) +
+            (f.opts && f.opts.length ? ' · 보기 ' + f.opts.length + '개' : '') + '</div>' +
+          '</div>';
+      });
+      h += '</div></div>';
+    });
+    h += '<p style="font-size:.8rem;color:var(--muted);padding:0 4px">' +
+      '문항을 고치시려면 구글시트의 <b>동의서양식</b> 탭에서 직접 수정하시면 됩니다. ' +
+      '유형은 단답 · 서술 · 단일선택 · 복수선택 · 안내 · 동의 중에 고르고, 보기는 <b>|</b> 로 구분합니다.</p>' +
+      '<div class="btnrow"><button class="btn sub" style="grid-column:1/3" onclick="closeSheet()">닫기</button></div>';
+    openSheet(h);
+  }).catch(function(e){ closeSheet(); fail(e); });
+}
+
+/* ══════════ 도구 ══════════ */
+function renderTool(){
+  var el = $('p-tool');
+  if(pgHit('p-tool','tool')) return;
+  $('ttl').textContent = '도구';
+  $('sub').textContent = '';
+  spin(el);
+  call('api_needAttention').then(function(d){
+    var h = '';
+    h += '<div class="sec-title">예약 가져오기</div><div class="card"><div class="card-b">' +
+      '<p style="margin:0 0 10px;font-size:.88rem;color:var(--ink2)">평소에는 5분마다 자동으로 들어옵니다. 급할 때만 누르세요.</p>' +
+      '<button class="btn" onclick="doCheckMail(this)">📩 지금 새 예약메일 확인</button>' +
+      '<p style="margin:9px 0 0;font-size:.78rem;color:var(--muted)">마지막 확인: ' +
+      esc(APP.boot.lastMail || '아직 없음') + '</p></div></div>';
+
+    if(d.noPhone.length){
+      h += '<div class="sec-title">연락처가 없는 예약 · ' + d.noPhone.length + '건</div>' +
+        '<div class="card">' + d.noPhone.map(bkHtml).join('') + '</div>' +
+        '<p style="font-size:.8rem;color:var(--muted);padding:0 4px">고객이 요청사항 칸에 이름·번호를 적었으면 아래 "요청사항에서 찾기"로 자동으로 채워집니다. 안 적힌 예약은 스마트플레이스에서 확인해 직접 넣어주세요.</p>';
+    }
+    if(d.noPaid && d.noPaid.length){
+      h += '<div class="sec-title">금액 입력 대기 · ' + d.noPaid.length + '건</div>' +
+        '<div class="card">' + d.noPaid.map(bkHtml).join('') + '</div>' +
+        '<p style="font-size:.8rem;color:var(--muted);padding:0 4px">예약을 눌러 [결제 등록]을 하면 매출에 잡힙니다.</p>';
+    }
+    if(d.check.length){
+      h += '<div class="sec-title">자동으로 못 읽은 예약 · ' + d.check.length + '건</div>' +
+        '<div class="card">' + d.check.map(bkHtml).join('') + '</div>';
+    }
+
+    h += '<div class="sec-title">문자 · 알림톡</div><div class="card"><div class="card-b">' +
+      (APP.boot.testMode
+        ? '<div class="alert warn" style="margin-bottom:10px"><span>🧪</span><span>지금은 <b>테스트 모드</b>입니다. 실제로는 나가지 않습니다.</span></div>'
+        : (APP.boot.smsReady ? '' : '<div class="alert bad" style="margin-bottom:10px"><span>⚙️</span><span>알리고 설정이 비어 있어 발송할 수 없습니다.</span></div>')) +
+      '<button class="btn sub" onclick="doSendDay(1,this)" style="margin-bottom:9px">💬 내일 예약자 전체에게 보내기</button>' +
+      '<button class="btn sub" onclick="doSendDay(0,this)">💬 오늘 예약자 전체에게 보내기</button>' +
+      '</div></div>';
+
+    h += '<div class="sec-title">정리</div><div class="card"><div class="card-b">' +
+      '<button class="btn sub" onclick="doRescan(this)" style="margin-bottom:9px">🔍 요청사항에서 실명·연락처 찾기</button>' +
+      '<button class="btn sub" onclick="doComplete(this)">✅ 지난 예약 이용완료 처리 (회차 차감)</button>' +
+      '</div></div>';
+
+    if(isOwner()){
+      h += '<div class="sec-title">내 번호 (사장님)</div><div class="card"><div class="card-b">' +
+        '<p style="margin:0 0 10px;font-size:.88rem;color:var(--ink2)">' +
+        (APP.boot.locked
+          ? '번호가 샜다 싶으면 바꿔주세요. 바꾸면 사장님 기기는 모두 다시 로그인해야 합니다.'
+          : '⚠️ 아직 번호가 없습니다. 지금 정해두시면 이 주소를 아는 사람도 함부로 못 들어옵니다.') +
+        '</p>' +
+        '<button class="btn' + (APP.boot.locked ? ' sub' : '') + '" onclick="openPw()">🔒 ' +
+        (APP.boot.locked ? '내 번호 바꾸기' : '번호 정하기') + '</button>' +
+        '</div></div>';
+
+      var pins = APP.boot.pins || [];
+      h += '<div class="sec-title">직원 로그인</div><div class="card"><div class="card-b">' +
+        '<p style="margin:0 0 10px;font-size:.88rem;color:var(--ink2)">' +
+        (pins.length
+          ? '직원마다 다른 번호를 주면, 누가 언제 들어왔는지 남습니다.'
+          : '직원에게 줄 번호를 만들어 주세요. 직원은 매출 화면을 볼 수 없습니다.') +
+        '</p>' +
+        (pins.length
+          ? '<div class="dtwrap"><table class="dt"><tr><th>이름</th><th>번호</th></tr>' +
+            pins.map(function(x){ return '<tr><td>' + esc(x.name) + '</td><td>' + esc(x.pin) + '</td></tr>'; }).join('') +
+            '</table></div>'
+          : '') +
+        '<button class="btn sub" style="margin-top:10px" onclick="openPins()">👥 직원 번호 관리</button>' +
+        '</div></div>';
+
+      h += '<div class="sec-title">시술 메뉴 · 금액</div><div class="card"><div class="card-b">' +
+        '<p style="margin:0 0 10px;font-size:.88rem;color:var(--ink2)">결제 등록할 때 고르는 시술 목록과 기본금액입니다.</p>' +
+        '<button class="btn sub" onclick="openMenu()">🧾 시술 메뉴 관리</button>' +
+        '</div></div>';
+    }
+
+    h += '<div class="sec-title">기록 보기</div><div class="card"><div class="card-b">' +
+      '<button class="btn sub" style="margin-bottom:9px" onclick="openSendLog(80)">💬 문자 발송 내역</button>' +
+      '<button class="btn sub"' + (isOwner() ? ' style="margin-bottom:9px"' : '') +
+        ' onclick="openFormList()">📝 상담지 · 동의서 양식</button>' +
+      (isOwner()
+        ? '<button class="btn sub" onclick="openTrash(\'\')">🗑 휴지통 (삭제 되돌리기)</button>'
+        : '') +
+      '</div></div>';
+
+    if(isOwner()){
+      h += '<div class="sec-title">원본 시트</div><div class="card"><div class="card-b">' +
+        '<p style="margin:0 0 10px;font-size:.88rem;color:var(--ink2)">캘린더 형태로 보거나, 설정을 바꾸거나, 문구를 고칠 때 엽니다.</p>' +
+        '<a class="btn sub" href="' + esc(APP.boot.sheetUrl) + '" target="_blank" rel="noopener">📊 구글시트 열기</a>' +
+        '</div></div>';
+    }
+
+    h += '<div class="sec-title">로그인</div><div class="card"><div class="card-b">' +
+      '<p class="whoami" style="margin:0 0 10px">지금 <b>' + esc(APP.me || '사장님') + '</b>' +
+      '<span class="rolechip">' + (isOwner() ? '사장님' : '직원') + '</span>으로 들어와 있습니다.</p>' +
+      '<button class="btn sub" onclick="doLogout()">↩ 로그아웃</button>' +
+      '</div></div>';
+    el.innerHTML = h;
+    pgDone('p-tool','tool');
+  }).catch(fail);
+}
+function busy(btn, txt){ btn.dataset.o = btn.textContent; btn.textContent = txt; btn.disabled = true; }
+function done(btn){ if(btn.dataset.o) btn.textContent = btn.dataset.o; btn.disabled = false; }
+
+function doCheckMail(btn){
+  busy(btn, '메일 확인 중… (최대 1분)');
+  call('api_checkMail').then(function(r){
+    done(btn);
+    var s = r.stat;
+    if(!s.total) toast('새로 처리할 메일이 없습니다');
+    else toast('새 예약 ' + s.created + ' · 변경 ' + s.updated + ' · 취소 ' + s.canceled +
+               (s.failed ? ' · 확인필요 ' + s.failed : ''));
+    APP.boot.lastMail = r.lastMail;
+    $('p-home').dataset.loaded = ''; pgClear(); APP.month = null;
+    renderTool();
+  }).catch(function(e){ done(btn); fail(e); });
+}
+function doSendDay(offset, btn){
+  var d = new Date(); d.setDate(d.getDate()+offset);
+  var key = ymd(d);
+  busy(btn, '대상 확인 중…');
+  call('api_day',[key]).then(function(r){
+    var targets = r.list.filter(function(o){ return o.status==='확정' && (o.phone||o.safe); });
+    if(!targets.length){ done(btn); toast('보낼 대상이 없습니다'); return; }
+    if(!confirm(targets.length + '명에게 안내 메시지를 보냅니다.\n계속할까요?')){ done(btn); return; }
+    btn.textContent = '보내는 중…';
+    return call('api_send',[targets.map(function(o){return o.resno;}), offset===1?'전일':'당일'])
+      .then(function(res){
+        done(btn);
+        if(res.testMode) toast('테스트 모드 · 실제로는 나가지 않았습니다 (' + res.sent + '건 기록)');
+        else toast('보냄 ' + res.sent + '건 / 실패 ' + res.failed + '건');
+      });
+  }).catch(function(e){ done(btn); fail(e); });
+}
+function doRescan(btn){
+  busy(btn, '찾는 중…');
+  call('api_rescanRequests').then(function(r){
+    done(btn);
+    if(!r.ok){ toast(r.msg || '실패했습니다'); return; }
+    toast(r.n ? (r.n + '건에서 실명·연락처를 채웠습니다') : '요청사항에서 새로 찾은 정보가 없습니다');
+    $('p-home').dataset.loaded = ''; pgClear();
+    renderTool();
+  }).catch(function(e){ done(btn); fail(e); });
+}
+function doComplete(btn){
+  if(!confirm('오늘 이전의 확정 예약을 모두 "이용완료"로 바꿉니다.\n회차 상품은 사용회차가 1씩 올라갑니다.\n\n계속할까요?')) return;
+  busy(btn, '처리 중…');
+  call('api_completePast').then(function(r){
+    done(btn); toast(r.n + '건을 이용완료로 바꿨습니다');
+    $('p-home').dataset.loaded = ''; pgClear();
+  }).catch(function(e){ done(btn); fail(e); });
+}
+
+/* ══════════ 잠금 화면 ══════════ */
+var PIN = '', PINTEXT = false;
+function showLock(msg){
+  if(document.getElementById('lockwrap')){
+    if(msg){ document.getElementById('lock-msg').textContent = msg; PIN=''; drawPin(); }
+    return;
+  }
+  var keys = '';
+  for(var i=1;i<=9;i++) keys += '<button onclick="pinKey(\''+i+'\')">'+i+'</button>';
+  keys += '<button class="f" onclick="pinClear()">지움</button>' +
+          '<button onclick="pinKey(\'0\')">0</button>' +
+          '<button class="f" onclick="pinBack()">←</button>';
+  var d = document.createElement('div');
+  d.id = 'lockwrap';
+  d.innerHTML =
+    '<div class="lockbox">' +
+      '<div class="lockicon">🔒</div>' +
+      '<h2>뷰티샵 예약 관리</h2>' +
+      '<p class="locksub" id="lock-sub">번호를 눌러주세요</p>' +
+      '<div class="pindots" id="pindots"></div>' +
+      '<div id="pintextwrap" style="display:none">' +
+        '<input id="pintext" type="password" autocomplete="current-password" placeholder="번호 또는 비밀번호">' +
+      '</div>' +
+      '<div id="lock-msg" class="lockmsg">' + (msg ? esc(msg) : '') + '</div>' +
+      '<div class="keys" id="pinkeys">' + keys + '</div>' +
+      '<button class="btn" style="margin-top:12px" onclick="doLogin(this)">들어가기</button>' +
+      '<button id="pinmodebtn" class="lockswap" onclick="pinMode()">⌨ 문자가 섞인 번호 입력</button>' +
+    '</div>';
+  document.body.appendChild(d);
+  PIN = ''; PINTEXT = false; drawPin();
+  document.addEventListener('keydown', pinKeyboard);
+}
+/* 번호판 ↔ 글자 입력 전환 */
+function pinMode(){
+  PINTEXT = !PINTEXT;
+  var kp = document.getElementById('pinkeys'),
+      dt = document.getElementById('pindots'),
+      tw = document.getElementById('pintextwrap'),
+      bt = document.getElementById('pinmodebtn'),
+      sb = document.getElementById('lock-sub');
+  if(!kp) return;
+  kp.style.display = PINTEXT ? 'none' : 'grid';
+  dt.style.display = PINTEXT ? 'none' : 'flex';
+  tw.style.display = PINTEXT ? 'block' : 'none';
+  bt.textContent = PINTEXT ? '🔢 번호판으로 입력' : '⌨ 문자가 섞인 번호 입력';
+  sb.textContent = PINTEXT ? '번호나 비밀번호를 적어주세요' : '번호를 눌러주세요';
+  PIN = ''; drawPin();
+  var ti = document.getElementById('pintext');
+  if(ti){ ti.value = ''; if(PINTEXT) setTimeout(function(){ try { ti.focus(); } catch(e){} }, 120); }
+}
+function drawPin(){
+  var el = document.getElementById('pindots');
+  if(!el) return;
+  var n = Math.max(PIN.length, 4), h = '';
+  for(var i=0;i<n;i++) h += '<i class="' + (i<PIN.length?'f':'') + '"></i>';
+  el.innerHTML = h;
+}
+function pinKey(c){ if(PIN.length<12){ PIN += c; drawPin(); } }
+function pinBack(){ PIN = PIN.slice(0,-1); drawPin(); }
+function pinClear(){ PIN = ''; drawPin(); }
+function pinKeyboard(ev){
+  if(!document.getElementById('lockwrap')) return;
+  if(ev.key === 'Enter'){ doLogin(); return; }
+  if(PINTEXT) return;                       /* 글자 입력칸에 맡깁니다 */
+  if(ev.key >= '0' && ev.key <= '9') pinKey(ev.key);
+  else if(ev.key === 'Backspace') pinBack();
+}
+function hideLock(){
+  var d = document.getElementById('lockwrap');
+  if(d) d.parentNode.removeChild(d);
+  document.removeEventListener('keydown', pinKeyboard);
+  PIN = '';
+}
+function doLogin(btn){
+  var ti = document.getElementById('pintext');
+  var pw = PINTEXT ? (ti ? ti.value.trim() : '') : PIN;
+  if(!pw) return;
+  if(btn) busy(btn, '확인 중…');
+  call('api_login',[pw],true).then(function(r){
+      if(btn) done(btn);
+      if(!r || !r.ok){
+        document.getElementById('lock-msg').textContent = (r && r.msg) || '들어가지 못했습니다';
+        PIN = ''; drawPin();
+        if(ti) ti.value = '';
+        return;
+      }
+      APP.token = r.token; tkSet(r.token);
+      APP.role = r.role || 'owner'; APP.me = r.name || '';
+      hideLock(); boot();
+    }).catch(function(e){
+      if(btn) done(btn);
+      document.getElementById('lock-msg').textContent = (e && e.message) || '문제가 생겼습니다';
+      PIN = ''; drawPin();
+      if(ti) ti.value = '';
+    });
+}
+function doLogout(){
+  tkSet(''); APP.token = ''; APP.role = 'owner'; APP.me = '';
+  location.reload();
+}
+
+/* ══════════ 시작 ══════════ */
+function boot(){
+  call('api_bootstrap').then(function(b){
+    APP.boot = b;
+    APP.day = b.today;
+    APP.role = b.role || 'owner';
+    APP.me = b.me || '';
+    hideLock();
+    applyRole();
+    renderHome();
+  }).catch(function(e){
+    if(document.getElementById('lockwrap')) return;
+    $('p-home').innerHTML = '<div class="card"><div class="empty">시작하지 못했습니다.<br><small>' +
+      esc(e && e.message) + '</small><br><br>구글시트에서 [초기세팅]을 먼저 실행했는지 확인해 주세요.</div></div>';
+  });
+}
+boot();
+</script>
+</body>
+</html>

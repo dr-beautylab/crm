@@ -1,0 +1,5097 @@
+/* 편집기에서 바로 실행할 수 있는 단축 함수 (함수 목록 맨 위에 나옵니다) */
+function A_지금_메일확인() { var s = processBookingMails(); Logger.log(JSON.stringify(s)); return s; }
+function A_요청사항_다시읽기() { return rescanRequests(); }
+function A_자동실행_시간_다시맞추기() { installTriggers(); Logger.log('자동실행 시간을 다시 맞췄습니다.'); return 'ok'; }
+function A_시술메뉴_기본값으로_다시만들기() {
+  var sh = ss().getSheetByName(SH.MENU);
+  if (sh) ss().deleteSheet(sh);
+  var s2 = buildMenuSheet();
+  Logger.log('시술메뉴 ' + (s2.getLastRow() - 1) + '개 만들었습니다.');
+  return s2.getLastRow() - 1;
+}
+function A_전체초기화_후_재수집() { return resetAndReimport(); }
+function A_메일진단() {
+  var out = [];
+  var q1 = 'subject:"네이버 예약" newer_than:7d';
+  var t1 = GmailApp.search(q1, 0, 30);
+  out.push('[1] ' + q1 + '  ->  스레드 ' + t1.length + '개');
+  t1.forEach(function (t) { t.getMessages().forEach(function (msg) {
+    out.push('   ' + fmt(msg.getDate(), 'MM-dd HH:mm') + ' | ' + msg.getSubject());
+  }); });
+  var q2 = 'from:navercorp.com newer_than:7d';
+  var t2 = GmailApp.search(q2, 0, 30);
+  out.push('[2] ' + q2 + '  ->  스레드 ' + t2.length + '개');
+  t2.forEach(function (t) { t.getMessages().forEach(function (msg) {
+    out.push('   ' + fmt(msg.getDate(), 'MM-dd HH:mm') + ' | ' + msg.getFrom() + ' | ' + msg.getSubject());
+  }); });
+  var q3 = '취소 newer_than:7d';
+  var t3 = GmailApp.search(q3, 0, 30);
+  out.push('[3] ' + q3 + '  ->  스레드 ' + t3.length + '개');
+  t3.forEach(function (t) { t.getMessages().forEach(function (msg) {
+    out.push('   ' + fmt(msg.getDate(), 'MM-dd HH:mm') + ' | ' + msg.getFrom() + ' | ' + msg.getSubject());
+  }); });
+  Logger.log(out.join('\n'));
+  return out.join('\n');
+}
+
+/*************************************************************************
+ *  뷰티샵 CRM  v1.0
+ *  당신을 그리다(퍼스널컬러) / 닥터 뷰티랩(반영구)
+ *  구글 스프레드시트 + Apps Script
+ *
+ *  ※ 이 코드는 수정할 필요가 없습니다.
+ *    모든 설정은 스프레드시트의 [설정] 탭에서 바꿉니다.
+ *************************************************************************/
+
+/* ===================== 기본 상수 ===================== */
+
+var SH = {
+  HOME:    '홈',
+  DATA:    '네이버예약_데이터',
+  CUST:    '고객DB',
+  PROFILE: '고객프로필',
+  LOG:     '발송로그',
+  CONFIG:  '설정',
+  SALES:   '매출통계_',
+  CAL:     '예약캘린더_',
+  MENU:    '시술메뉴',
+  SLOG:    '매출내역',
+  FORM:    '동의서양식',
+  CONSENT: '동의서기록',
+  BLOCK:   '간단일정',
+  CASH:    '수입지출',
+  PPLOG:   '선불포인트내역',
+  TRASH:   '휴지통',
+  AUTH:    '접속기록'
+};
+var AUTH_HEAD = ['시각', '이름', '권한', '결과'];
+
+var GRADES = ['VIP', '단골', '신규', '재방문', '휴면', '블랙리스트'];
+var BLOCK_HEAD = ['ID', '샵', '날짜', '시작', '종료', '제목', '메모', '등록시각'];
+var CASH_HEAD = ['ID', '거래일', '구분', '계정', '내용', '금액', '결제수단', '샵', '메모', '등록시각'];
+var PP_HEAD = ['등록시각', '고객ID', '고객명', '종류', '구분', '금액', '잔액', '메모', '담당자'];
+var TRASH_HEAD = ['삭제시각', '종류', '식별자', '요약', '데이터'];
+
+/* 네이버예약_데이터 열 번호 */
+var D = {
+  RESNO:1, SHOP:2, STATUS:3, NAME:4, PHONE:5, SAFE:6, DATE:7, TIME:8,
+  PRODUCT:9, OPTION:10, PEOPLE:11, REQUEST:12, AMOUNT:13, PAID:14,
+  STAFF:15, SOURCE:16, MAILAT:17, PROCAT:18, CUSTID:19, CALID:20,
+  MAILID:21, MEMO:22
+};
+var D_HEAD = ['예약번호','샵','상태','예약자명','연락처','안심번호','예약일','예약시간',
+  '예약상품','선택메뉴(옵션)','인원','요청사항','예약금액','실결제금액','담당자',
+  '등록경로','메일수신시각','처리시각','고객ID','구글캘린더ID','메일ID','비고'];
+
+/* 고객DB 열 번호 */
+var C = {
+  ID:1, NAME:2, PHONE:3, SAFE:4, SHOP:5, FIRST:6, LAST:7, VISITS:8,
+  PRODUCT:9, TOTAL:10, USED:11, LEFT:12, MEMO:13, SOURCE:14, FOLDER:15, NEXT:16,
+  GENDER:17, BIRTH:18, STAFF:19, PREPAID:20, REL:21, NEEDLE:22, PIGMENT:23, TONE:24,
+  GRADE:25, TAG:26, POINT:27
+};
+var C_HEAD = ['고객ID','이름','연락처','안심번호(050)','주이용샵','최초방문일','최근방문일',
+  '총방문횟수','회차상품명','총회차','사용회차','잔여회차','고객메모(특이사항)',
+  '등록경로','사진폴더','다음예약일',
+  '성별','생년월일','담당자','잔여 선불액','연결 고객','니들','색소','퍼스널컬러 톤',
+  '등급','태그','잔여 포인트'];
+
+/* 발송로그 열 */
+var L_HEAD = ['발송시각','예약번호','샵','고객명','연락처','유형','채널','결과','메시지','응답'];
+
+var STATUS = { OK:'확정', CANCEL:'취소', CHANGE:'변경', DONE:'이용완료', CHECK:'확인필요' };
+
+/* ===================== 메뉴 ===================== */
+
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu('📅 샵 관리')
+      .addItem('🚀 처음 한 번만 - 초기세팅', 'setup')
+      .addSeparator()
+      .addItem('📩 지금 새 예약메일 확인', 'checkMailNow')
+      .addItem('✍️ 수동예약 반영 (캘린더에 직접 쓴 예약)', 'importManualBookings')
+      .addItem('🔗 고객 매칭 다시하기', 'rematchCustomers')
+      .addSeparator()
+      .addItem('🗓 다음달 캘린더 만들기', 'createNextMonthCalendars')
+      .addItem('🗓 이번달 캘린더 다시 그리기', 'refreshThisMonthCalendars')
+      .addSeparator()
+      .addItem('✅ 지난 예약 이용완료 처리', 'completePastBookings')
+      .addItem('💰 매출통계 새로고침', 'refreshAllSales')
+      .addItem('🏠 홈 화면 새로고침', 'refreshHome')
+      .addSeparator()
+      .addItem('💬 선택한 예약에 문자/알림톡 보내기', 'sendToSelected')
+      .addItem('💬 사전 안내 전체 발송 (수동)', 'sendReminderAdvanceManual')
+      .addItem('💬 내일 예약자 전체 발송 (수동)', 'sendReminderTomorrowManual')
+      .addItem('💬 오늘 예약자 전체 발송 (수동)', 'sendReminderTodayManual')
+      .addItem('💬 발송 테스트 (내 번호로 1건)', 'sendTestMessage')
+      .addSeparator()
+      .addItem('👤 고객프로필 새로고침', 'refreshProfile')
+      .addItem('📁 선택한 고객 사진폴더 만들기', 'createFolderForSelectedCustomer')
+      .addSeparator()
+      .addItem('🔧 자동실행 시간 다시 맞추기', 'installTriggers')
+      .addItem('❓ 상태 점검(진단)', 'runDiagnostics')
+      .addItem('🧪 최근 예약메일 읽기 테스트', 'testParseLatestMail')
+    .addToUi();
+}
+
+/* ===================== 설정 읽기 ===================== */
+
+var _cfgCache = null;
+
+function cfg(key, dflt) {
+  if (!_cfgCache) {
+    _cfgCache = {};
+    var sh = ss().getSheetByName(SH.CONFIG);
+    if (sh) {
+      var v = sh.getRange(1, 1, Math.max(sh.getLastRow(), 1), 2).getValues();
+      for (var i = 0; i < v.length; i++) {
+        var k = String(v[i][0]).trim();
+        if (k && k.indexOf('■') !== 0) _cfgCache[k] = v[i][1];
+      }
+    }
+  }
+  var val = _cfgCache[key];
+  if (val === undefined || val === null || String(val).trim() === '') {
+    return (dflt === undefined) ? '' : dflt;
+  }
+  return val;
+}
+
+function cfgStr(key, dflt) { return String(cfg(key, dflt)).trim(); }
+function cfgOn(key) { return String(cfg(key, '')).trim() === '사용'; }
+
+function setCfg(key, value) {
+  var sh = ss().getSheetByName(SH.CONFIG);
+  if (!sh) return;
+  var v = sh.getRange(1, 1, Math.max(sh.getLastRow(), 1), 1).getValues();
+  for (var i = 0; i < v.length; i++) {
+    if (String(v[i][0]).trim() === key) {
+      sh.getRange(i + 1, 2).setValue(value);
+      if (_cfgCache) _cfgCache[key] = value;
+      return;
+    }
+  }
+  sh.appendRow([key, value, '']);
+  if (_cfgCache) _cfgCache[key] = value;
+}
+
+var SHEET_ID = '1yT1GBi--CNHA3i4rVmmahmMo_6jX3bHq_3Y0wy5TkEQ';
+function ss() {
+  try { var a = SpreadsheetApp.getActiveSpreadsheet(); if (a) return a; } catch (e) {}
+  return SpreadsheetApp.openById(SHEET_ID);
+}
+function tz() { return 'Asia/Seoul'; }
+
+/* 샵 목록: [{name, short, keywords[], calKey, salesSheet, calPrefix}] */
+function shops() {
+  var out = [];
+  for (var i = 1; i <= 2; i++) {
+    var name = cfgStr('샵' + i + ' 이름', '');
+    if (!name) continue;
+    out.push({
+      idx: i,
+      name: name,
+      short: cfgStr('샵' + i + ' 약칭', name),
+      keywords: cfgStr('샵' + i + ' 식별키워드', name).split(',')
+                  .map(function (s) { return s.trim(); })
+                  .filter(function (s) { return s; }),
+      calIdKey: '샵' + i + ' 구글캘린더ID',
+      sendKey: '샵' + i + ' 발송 사용'
+    });
+  }
+  return out;
+}
+
+function shopByName(name) {
+  var list = shops();
+  for (var i = 0; i < list.length; i++) if (list[i].name === name) return list[i];
+  return null;
+}
+
+/* ===================== 유틸 ===================== */
+
+function fmt(d, pattern) {
+  if (!d) return '';
+  if (!(d instanceof Date)) d = new Date(d);
+  if (isNaN(d.getTime())) return '';
+  return Utilities.formatDate(d, tz(), pattern);
+}
+
+function ymd(d) { return fmt(d, 'yyyy-MM-dd'); }
+function hm(d)  { return fmt(d, 'HH:mm'); }
+
+function toDate(v) {
+  if (!v) return null;
+  if (v instanceof Date) return v;
+  var s = String(v).trim().replace(/\./g, '-').replace(/-+$/, '').replace(/\//g, '-');
+  var m = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (!m) return null;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+/* '오후 1:00' / '13:00' → 'HH:mm' */
+function normTime(s) {
+  if (!s) return '';
+  if (s instanceof Date) return hm(s);
+  var t = String(s).trim();
+  var pm = /오후|PM/i.test(t);
+  var am = /오전|AM/i.test(t);
+  var m = t.match(/(\d{1,2})\s*[:시]\s*(\d{1,2})?/);
+  if (!m) return '';
+  var h = Number(m[1]);
+  var mi = Number(m[2] || 0);
+  if (pm && h < 12) h += 12;
+  if (am && h === 12) h = 0;
+  return ('0' + h).slice(-2) + ':' + ('0' + mi).slice(-2);
+}
+
+function timeStr(v) { if (v instanceof Date) return hm(v); return String(v || '').trim(); }
+
+function onlyDigits(s) { return String(s || '').replace(/[^0-9]/g, ''); }
+
+function last4(phone) {
+  var d = onlyDigits(phone);
+  return d.length >= 4 ? d.slice(-4) : '';
+}
+
+function normPhone(s) {
+  var d = onlyDigits(s);
+  if (!d) return '';
+  if (d.length === 11) return d.slice(0, 3) + '-' + d.slice(3, 7) + '-' + d.slice(7);
+  if (d.length === 10) return d.slice(0, 3) + '-' + d.slice(3, 6) + '-' + d.slice(6);
+  return String(s).trim();
+}
+
+function isSafePhone(s) { return /^050/.test(onlyDigits(s)); }
+
+function nowStr() { return fmt(new Date(), 'yyyy-MM-dd HH:mm:ss'); }
+
+/* '2026-08-29 04:35:12' 같은 문자열을 비교 가능한 숫자로 */
+function parseStamp(v) {
+  if (v instanceof Date) return v.getTime();
+  var m = String(v || '').match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
+  if (!m) return 0;
+  return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime();
+}
+
+function toast(msg, title) {
+  try { ss().toast(msg, title || '샵 관리', 6); } catch (e) {}
+}
+
+function alert(msg) {
+  try { SpreadsheetApp.getUi().alert(msg); } catch (e) { Logger.log(msg); }
+}
+
+function sheetOf(name) {
+  var s = ss().getSheetByName(name);
+  if (!s) throw new Error('[' + name + '] 탭이 없습니다. 메뉴에서 "초기세팅"을 먼저 실행해 주세요.');
+  return s;
+}
+
+function getOrCreateSheet(name) {
+  var s = ss().getSheetByName(name);
+  if (!s) s = ss().insertSheet(name);
+  return s;
+}
+
+/* 데이터 시트 전체 읽기 */
+function readData() {
+  var sh = sheetOf(SH.DATA);
+  var last = sh.getLastRow();
+  if (last < 2) return [];
+  return sh.getRange(2, 1, last - 1, D_HEAD.length).getValues();
+}
+
+/* 관리자에게 오류/알림 메일 */
+function notifyAdmin(subject, body) {
+  var to = cfgStr('관리자 이메일', '');
+  if (!to) { try { to = Session.getEffectiveUser().getEmail(); } catch (e) { return; } }
+  if (!to) return;
+  try {
+    MailApp.sendEmail(to, '[샵 CRM] ' + subject,
+      body + '\n\n---\n스프레드시트 열기: ' + ss().getUrl());
+  } catch (e) { Logger.log('알림메일 실패: ' + e); }
+}
+
+function logError(where, e) {
+  var msg = where + ' : ' + (e && e.message ? e.message : e);
+  Logger.log(msg);
+  try { setCfg('마지막 오류', nowStr() + ' / ' + msg); } catch (ignore) {}
+  notifyAdmin('오류가 발생했습니다', 
+    '아래 작업에서 문제가 생겼어요.\n\n작업: ' + where + '\n내용: ' + msg +
+    '\n\n대부분은 잠시 후 자동으로 다시 시도됩니다. 반복되면 개발자에게 이 메일을 보여주세요.');
+}
+
+/* =========================================================
+ *  1. 초기세팅 (한 번만 실행)
+ * ========================================================= */
+
+function setup() {
+  var ui;
+  try { ui = SpreadsheetApp.getUi(); } catch (e) { ui = null; }
+  if (ui) {
+    var r = ui.alert('초기세팅',
+      '필요한 탭·서식·자동실행·구글캘린더·사진폴더를 한 번에 만듭니다.\n\n' +
+      '이미 있는 자료는 지우지 않습니다.\n계속할까요?', ui.ButtonSet.YES_NO);
+    if (r !== ui.Button.YES) return;
+  }
+  try {
+    try { ss().setSpreadsheetTimeZone('Asia/Seoul'); } catch (e) {}
+    buildConfigSheet();
+    _cfgCache = null;
+    buildDataSheet();
+    buildCustomerSheet();
+    buildLogSheet();
+    buildProfileSheet();
+    buildSalesSheets();
+    buildMenuSheet();
+    buildSlogSheet();
+    buildFormSheet();
+    seedForms(false);
+    buildConsentSheet();
+    buildBlockSheet();
+    buildCashSheet();
+    buildPpSheet();
+    buildTrashSheet();
+    buildHomeSheet();
+    createCalendarsForMonth(new Date());
+    createCalendarsForMonth(nextMonthDate(new Date()));
+    ensureGoogleCalendars();
+    ensureDriveRoot();
+    installTriggers();
+    protectSheets();
+    orderTabs();
+    refreshHome();
+    setCfg('마지막 오류', '');
+    toast('초기세팅이 끝났습니다!', '완료');
+    if (ui) ui.alert('초기세팅 완료',
+      '준비가 끝났습니다.\n\n다음으로 할 일:\n' +
+      '1) [설정] 탭에서 담당자 명단을 입력하세요.\n' +
+      '2) 네이버 예약 메일이 이 지메일로 오도록 전달 설정을 해주세요.\n' +
+      '3) 메뉴 → "지금 새 예약메일 확인"을 눌러 테스트해 보세요.', ui.ButtonSet.OK);
+  } catch (e) {
+    logError('초기세팅', e);
+    if (ui) ui.alert('초기세팅 중 문제가 생겼습니다:\n\n' + e.message);
+  }
+}
+
+function orderTabs() {
+  var order = [SH.HOME];
+  shops().forEach(function (s) {
+    order.push(SH.CAL + s.short + '_' + fmt(new Date(), 'yyyy-MM'));
+  });
+  order.push(SH.DATA, SH.CUST, SH.PROFILE, SH.MENU, SH.SLOG, SH.FORM, SH.CONSENT);
+  shops().forEach(function (s) { order.push(SH.SALES + s.short); });
+  order.push(SH.LOG, SH.CONFIG);
+  var pos = 1;
+  order.forEach(function (n) {
+    var sh = ss().getSheetByName(n);
+    if (sh) { ss().setActiveSheet(sh); ss().moveActiveSheet(pos++); }
+  });
+  ss().setActiveSheet(ss().getSheetByName(SH.HOME));
+}
+
+/* ---------- 설정 시트 ---------- */
+
+function defaultConfigRows() {
+  return [
+    ['■ 기본 설정', '', '이 탭의 값만 바꾸면 됩니다. 코드는 건드리지 않아도 됩니다.'],
+    ['관리자 이메일', 'drbeautylab.official@gmail.com', '오류·알림을 받을 메일 주소'],
+    ['샵1 이름', '당신을 그리다', '첫 번째 샵 이름 (메시지에 그대로 들어갑니다)'],
+    ['샵1 약칭', '그리다', '탭 이름에 쓰는 짧은 이름 (한글 2~4자)'],
+    ['샵1 식별키워드', '당신을 그리다,당신을그리다', '예약메일에서 이 샵을 알아볼 단어. 쉼표로 여러 개'],
+    ['샵2 이름', '닥터 뷰티랩', ''],
+    ['샵2 약칭', '뷰티랩', ''],
+    ['샵2 식별키워드', '닥터 뷰티랩,닥터뷰티랩,뷰티랩', ''],
+    ['담당자 명단', '원장', '캘린더 담당자 칸의 선택목록. 쉼표로 구분 (예: 원장,김실장,이실장)'],
+    ['직원 인센티브(%)', '', '직원별 결산에서 인센티브 계산. 예: 원장:30,김실장:20'],
+    ['지출 계정 목록', '재료비,월세,관리비,공과금,마케팅비,광고비,수수료,인건비,장비,교육,기타', '수입지출 화면에서 고르는 계정 목록'],
+    ['네이버 수수료율(%)', '1.98', '네이버 결제 정산 수수료 (VAT 포함). 일반예약상품 1.98 / 네이버 주문상품 0.88 / 해외카드 3.85'],
+    ['신용카드 수수료율(%)', '0.40', '카드 결제 수수료. 연매출 3억 이하 우대요율 0.40'],
+    ['체크카드 수수료율(%)', '0.15', '체크카드 수수료. 연매출 3억 이하 우대요율 0.15'],
+    ['하루 예약칸 수', '10', '캘린더에서 하루에 적을 수 있는 예약 줄 수'],
+    ['영업 시작시각', '10:00', '캘린더 참고용'],
+    ['영업 종료시각', '20:00', '캘린더 참고용'],
+    ['예약 기본 소요시간(분)', '90', '구글캘린더에 등록될 예약 1건의 길이'],
+
+    ['■ 예약메일 수집', '', ''],
+    ['메일 자동수집 사용', '사용', '사용 / 미사용'],
+    ['메일 검색조건', 'subject:"네이버 예약" newer_than:3d',
+      '지메일 검색어. 메일이 안 잡히면 newer_than:7d 로 늘려보세요'],
+    ['처리완료 라벨', 'CRM처리완료', '처리한 메일에 붙는 지메일 라벨 (중복처리 방지)'],
+    ['한 번에 처리할 메일 수', '20', '너무 크게 하면 시간초과가 납니다'],
+
+    ['■ 메일 읽는 규칙 (형식이 바뀌면 여기만 수정)', '', '정규식입니다. 잘 모르면 그대로 두세요'],
+    ['규칙_제목_취소', '취소', '제목에 이 말이 있으면 취소 메일로 봅니다'],
+    ['규칙_제목_변경', '변경|수정', ''],
+    ['규칙_제목_확정', '확정|접수|신청|완료', ''],
+    ['규칙_예약번호', '예약번호\\s*[:：]?\\s*([0-9]{6,})', ''],
+    ['규칙_예약자명', '예약자명\\s*[:：]?\\s*([^\\n\\r]{1,30})', ''],
+    ['규칙_이용일시', '이용일시\\s*[:：]?\\s*([^\\n\\r]{1,60})', ''],
+    ['규칙_예약상품', '예약상품\\s*[:：]?\\s*([^\\n\\r]{1,100})', ''],
+    ['규칙_선택메뉴', '선택메뉴\\s*[:：]?\\s*([^\\n\\r]{1,150})', ''],
+    ['규칙_요청사항', '요청사항\\s*[:：]?\\s*([^\\n\\r]{0,300})', ''],
+    ['규칙_연락처', '(?:연락처|휴대폰|전화번호|휴대전화)\\s*[:：]?\\s*(0[0-9\\-\\s]{8,16})', '메일에 없으면 비어있습니다'],
+    ['규칙_결제상태', '결제상태\\s*[:：]?\\s*([^\\n\\r]{1,20})', ''],
+
+    ['■ 앱 잠금 / 직원 로그인', '', '휴대폰에서 앱을 열 때 물어볼 번호입니다'],
+    ['앱 비밀번호', '', '사장님 번호(전체 권한). 비워두면 잠그지 않습니다. 4자 이상. 앱의 [도구] 탭에서도 바꿀 수 있습니다'],
+    ['직원 PIN', '', '직원용. 이름:번호 형식, 쉼표로 여러 명 (예: 김실장:482913,이실장:770124)'],
+    ['직원 매출 보기', '숨김', '숨김 / 보임 — 직원에게 매출·수입지출·직원결산을 보여줄지'],
+
+    ['■ 알림톡 / 문자 발송 (알리고)', '', '가입 전에는 비워두세요. 비어있으면 발송하지 않습니다'],
+    ['알리고 사용자ID', '', 'smartsms.aligo.in 로그인 아이디'],
+    ['알리고 API키', '', '알리고 사이트에서 발급'],
+    ['발신번호', '', '알리고에 사전 등록한 번호 (예: 010-1234-5678)'],
+    ['카카오채널 senderkey', '', '알림톡용. 없으면 문자(SMS)로만 나갑니다'],
+    ['알림톡 템플릿코드_사전', '', ''],
+    ['알림톡 템플릿코드_전일', '', ''],
+    ['알림톡 템플릿코드_당일', '', ''],
+    ['알림톡 템플릿코드_확정', '', ''],
+    ['테스트 모드', '사용', '"사용"이면 실제로 보내지 않고 발송로그만 남깁니다. 실제 발송하려면 "미사용"'],
+    ['샵1 발송 사용', '사용', ''],
+    ['샵2 발송 사용', '사용', ''],
+    ['사전 알림 사용', '사용', ''],
+    ['사전 알림 며칠 전', '3', '예약일 며칠 전에 사전 안내를 보낼지 (예약 변경 기한에 맞추세요)'],
+    ['사전 알림 시각', '14:00', '이 시각에 며칠 뒤 예약자에게 사전 안내 발송'],
+    ['전일 알림 사용', '사용', ''],
+    ['전일 알림 시각', '14:00', '전날 이 시각에 내일 예약자에게 발송'],
+    ['당일 알림 사용', '사용', ''],
+    ['당일 알림 시각', '09:00', '당일 이 시각에 오늘 예약자에게 발송'],
+    ['확정 즉시 안내 사용', '미사용', '예약이 잡히자마자 안내문자 보내기'],
+    ['테스트 수신번호', '', '"발송 테스트" 메뉴가 이 번호로 1건 보냅니다'],
+
+    ['■ 문자 문구', '', '#{고객명} #{상점명} #{날짜요일} #{시각} #{예약일시} #{소요시간} #{상품} #{옵션} #{날짜} #{시간} 은 자동으로 바뀝니다'],
+    ['문구_사전', '[#{샵}]\n#{이름}님 안녕하세요.\n#{예약일시} 예약 안내드립니다.\n· 시술: #{상품}\n변경이나 취소는 이 번호로 연락 주세요.', ''],
+    ['문구_전일', '[#{샵}]\n#{이름}님 안녕하세요.\n내일 #{시간} 예약 안내드립니다.\n· 시술: #{상품}\n변경이나 취소는 이 번호로 연락 주세요.', ''],
+    ['문구_당일', '[#{샵}]\n#{이름}님, 오늘 #{시간}에 뵙겠습니다.\n· 시술: #{상품}\n조심히 와주세요!', ''],
+    ['문구_확정', '[#{샵}]\n#{이름}님, 예약이 확정되었습니다.\n· 일시: #{날짜} #{시간}\n· 시술: #{상품}\n감사합니다.', ''],
+
+    ['샵1 문구_사전', '', '당신을 그리다 사전 안내. 비워두면 위의 공통 문구를 씁니다'],
+    ['샵2 문구_사전', "#{고객명}님, 안녕하세요.\n#{예약일시} #{상품} 예약 안내드립니다.\n소요시간은 #{소요시간} 정도입니다.\n\n■ 먼저 확인해 주세요 (시술 불가)\n아래에 해당하시면 시술을 진행할 수 없습니다.\n매장으로 꼭 전화 주세요. 010-2722-3093\n이 경우 위약금 없이 변경·취소해 드립니다.\n\n임산부, 수유부, 켈로이드 피부, 아스피린 계열·고지혈증약 복용, 간염 보균, 심한 여드름성 피부, 이전 시술 잔흔이 강하게 남은 경우, 지루성 피부염, 트러블이 많은 두피\n\n그 밖의 질환이나 복용 중인 약이 있으시면 미리 전화로 말씀해 주세요. 당일에 확인되면 시술이 어려울 수 있습니다.\n\n■ 시술 전날까지\n· 음주는 피해주세요. 출혈과 붓기가 늘고 색소가 잘 자리 잡지 않습니다.\n· 시술 부위 각질제거, 필링, 레이저는 2주 전부터 피해주세요.\n\n■ 시술 당일\n· 카페인은 줄여주세요. 통증에 예민해집니다.\n· 충분히 주무시고 편한 컨디션으로 와주세요.\n· 두피 시술은 머리를 감고 와주세요.\n· 잔여 색소가 손이나 옷에 묻어날 수 있어 밝은 색이나 고가의 의상은 피해주세요. 의류 오염은 책임지지 않습니다.\n\n■ 디자인 안내\n자연스럽고 안전한 시술을 지향합니다. 전문가의 판단으로 부자연스럽거나 과한 디자인은 시술이 어려울 수 있습니다.\n\n■ 예약 안내\n· 100% 예약제 매장입니다. 정시 방문 부탁드립니다.\n· 그 외 사유의 예약 변경은 3일 전까지 1회 가능하며, 변경·취소 시 예약금은 환불되지 않습니다.\n· 15분 이상 지각 시 다음 예약 일정으로 인해 자동 취소되며, 노쇼 시 재예약이 제한됩니다.\n· 건물 지하 주차장을 2시간 무료로 이용하실 수 있습니다.\n\n안내를 확인하지 못해 생기는 불이익은 책임지기 어려우니 꼭 읽어봐 주세요.", '닥터 뷰티랩 사전 안내 (예약 3일 전). 전화번호를 실제 번호로 바꿔주세요'],
+    ['샵1 문구_전일', "안녕하세요 #{고객명}님 :)\n당신을 그리다 마곡점입니다.\n예약 안내사항 보내드립니다.\n\n<< 예약일 : #{예약일시} >>\n\n*퍼스널컬러 진단*\n1.정확한 진단을 위해서 꼭 노메이크업으로 방문해 주세요. (메이크업 후 방문 시 세안하셔야 하며, 진단 시간에 포함됩니다.)\n2.정확한 눈동자 색상 확인을 위해 컬러렌즈 착용 불가합니다. (투명렌즈 착용 가능)\n3.안경은 진단 시 벗으셔야 하기 때문에 시력이 많이 안좋으신 경우 투명렌즈 착용을 추천드립니다.\n\n*메이크업 클래스*\n1.노메이크업으로 방문 해주세요.\n2.평소 사용하시는 메이크업 제품과 브러쉬를 가져와주세요. 제품이 없을 경우 매장에서 대여해드리며, 브러쉬는 매장에서 구매 가능합니다.\n3.브러쉬는 세척 후 방문해주세요. 미세척 시 위생 문제로 화장품 대여 불가합니다.\n\n**공통 안내사항**\n- 건물 지하 주차장에 주차 가능합니다. 컨설팅 시간만큼 무료 주차권 제공해 드립니다.\n- 예약시간 정시 방문을 꼭 부탁드립니다! 대기 공간이 없기 때문에 앞 타임 고객님이 계실 때 미리 도착하시면 외부에서 대기하셔야 합니다. 다음 예약 고객님을 위해 15분 이상 늦으실 경우 시술은 자동 예약 취소되며, 교육은 기존 시간에 맞춰서 종료됩니다.(당일 취소/노쇼 예약금 환불 불가)\n- 본 메세지는 자동 발송됩니다. 추가 문의는 네이버 톡톡으로 남겨주시면 확인하는대로 답변 드리겠습니다. 외부 강의&예약 일정으로 답변이 늦어질 수 있는 점 미리 양해 부탁드립니다!\n\n* [네이버지도]로 '당신을그리다' 검색 하시면 길 찾기 편리합니다! https://naver.me/GUTluIrH", '당신을 그리다 전용. 비워두면 위의 공통 문구를 씁니다'],
+    ['샵2 문구_전일', "▶ 날짜 : #{날짜요일}\n▶ 시간 : #{시각}\n▶ 소요시간 : #{소요시간}\n\n안녕하세요, 닥터뷰티랩입니다.\n예약 안내 사항 보내드립니다. 사전 안내 미숙지로 인한 불이익은 책임지지 않습니다. 꼭 확인 부탁드립니다!\n\n[탈모 커버]\n- 시술 직후 두피에 잔여 색소가 남아 손이나 옷에 묻어날 수 있으니, 방문 시 고가의상·밝은 색 옷은 피해 주세요. 의류 오염은 책임지지 않으니 편한 복장으로 방문 부탁드립니다.\n\n[눈썹, 입술 커버]\n- 자연스럽고 안전한 시술을 지향합니다. 전문가의 판단으로 부자연스럽거나 과한 디자인은 시술이 불가할 수 있습니다.\n\n[공통 안내]\n- 100% 예약제 매장입니다. 정시 방문을 부탁드립니다. 예약 변경/취소 시 예약금 환불 불가하며, 예약 변경은 예약 3일 전까지 1회 변경 가능합니다. 15분 이상 지각 시 다음 예약 스케줄로 인해 자동 예약 취소되며, 노쇼 시 재예약이 제한됩니다.\n- 매장 건물 지하 주차장이 있습니다. (2시간 무료 이용 가능)\n- 시술 불가\n임산부/수유부/켈로이드피부/아스피린계열, 고지혈증약 복용/간염보균자/심한 여드름성피부/이전시술 잔흔이 강하게 남으신 분/지루성두피염/트러블이 많은 두피 고객님은 미리 연락 부탁드립니다. 기타 질환 및 질병은 대면 상담 시 꼭 말씀해 주세요!\n\n* [네이버지도]로 '닥터뷰티랩' 검색 하시면 길 찾기 편리합니다! https://naver.me/GL80O8yd", '닥터 뷰티랩 전용. 비워두면 위의 공통 문구를 씁니다'],
+
+    ['■ 시스템 (자동으로 채워집니다 · 건드리지 마세요)', '', ''],
+    ['사진 루트폴더ID', '', ''],
+    ['샵1 구글캘린더ID', '', ''],
+    ['샵2 구글캘린더ID', '', ''],
+    ['마지막 메일확인 시각', '', ''],
+    ['마지막 오류', '', '']
+  ];
+}
+
+function buildConfigSheet() {
+  var sh = getOrCreateSheet(SH.CONFIG);
+  var rows = defaultConfigRows();
+  var existing = {};
+  if (sh.getLastRow() > 0) {
+    var cur = sh.getRange(1, 1, sh.getLastRow(), 2).getValues();
+    cur.forEach(function (r) {
+      var k = String(r[0]).trim();
+      if (k && k.indexOf('■') !== 0) existing[k] = r[1];
+    });
+  }
+  sh.clear();
+  var out = rows.map(function (r) {
+    var k = String(r[0]).trim();
+    var v = (existing[k] !== undefined && String(existing[k]).trim() !== '') ? existing[k] : r[1];
+    return [r[0], v, r[2]];
+  });
+  sh.getRange(1, 1, out.length, 3).setValues(out);
+  sh.setColumnWidth(1, 230).setColumnWidth(2, 380).setColumnWidth(3, 460);
+  sh.getRange(1, 1, out.length, 3).setVerticalAlignment('middle').setWrap(true);
+  // 섹션 머리글 서식
+  for (var i = 0; i < out.length; i++) {
+    if (String(out[i][0]).indexOf('■') === 0) {
+      sh.getRange(i + 1, 1, 1, 3).setBackground('#1f3864').setFontColor('#ffffff').setFontWeight('bold');
+    }
+  }
+  sh.getRange(1, 3, out.length, 1).setFontColor('#888888').setFontSize(9);
+  sh.setFrozenColumns(1);
+  return sh;
+}
+
+/* ---------- 데이터 시트 ---------- */
+
+function buildDataSheet() {
+  var sh = getOrCreateSheet(SH.DATA);
+  if (sh.getLastRow() === 0) {
+    sh.appendRow(D_HEAD);
+  } else {
+    sh.getRange(1, 1, 1, D_HEAD.length).setValues([D_HEAD]);
+  }
+  var h = sh.getRange(1, 1, 1, D_HEAD.length);
+  h.setBackground('#1f3864').setFontColor('#ffffff').setFontWeight('bold')
+   .setHorizontalAlignment('center').setVerticalAlignment('middle');
+  sh.setFrozenRows(1);
+  sh.setRowHeight(1, 34);
+  var widths = [110, 100, 80, 90, 120, 120, 95, 70, 220, 240, 50, 200, 90, 100, 80, 90, 140, 140, 80, 240, 200, 200];
+  widths.forEach(function (w, i) { sh.setColumnWidth(i + 1, w); });
+  sh.hideColumns(D.CALID, 2); // 구글캘린더ID, 메일ID 숨김
+  // 상태 조건부 서식
+  var rng = sh.getRange(2, 1, Math.max(sh.getMaxRows() - 1, 1), D_HEAD.length);
+  var rules = [
+    SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=$C2="' + STATUS.CANCEL + '"')
+      .setBackground('#f0f0f0').setFontColor('#999999').setStrikethrough(true).setRanges([rng]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=$C2="' + STATUS.CHECK + '"')
+      .setBackground('#ffe0e0').setRanges([rng]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=AND($C2="' + STATUS.OK + '",$E2="",$F2="")')
+      .setBackground('#fff4d6').setRanges([rng]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=$C2="' + STATUS.DONE + '"')
+      .setBackground('#e8f5e9').setRanges([rng]).build()
+  ];
+  sh.setConditionalFormatRules(rules);
+  // 상태 드롭다운
+  var sv = SpreadsheetApp.newDataValidation()
+    .requireValueInList([STATUS.OK, STATUS.CANCEL, STATUS.CHANGE, STATUS.DONE, STATUS.CHECK], true)
+    .setAllowInvalid(true).build();
+  sh.getRange(2, D.STATUS, Math.max(sh.getMaxRows() - 1, 1), 1).setDataValidation(sv);
+  sh.getRange(2, D.DATE, Math.max(sh.getMaxRows() - 1, 1), 1).setNumberFormat('yyyy-mm-dd');
+  sh.getRange(2, D.TIME, Math.max(sh.getMaxRows() - 1, 1), 1).setNumberFormat('@');
+  sh.getRange(2, D.AMOUNT, Math.max(sh.getMaxRows() - 1, 1), 2).setNumberFormat('#,##0');
+  return sh;
+}
+
+/* ---------- 고객DB ---------- */
+
+function buildCustomerSheet() {
+  var sh = getOrCreateSheet(SH.CUST);
+  if (sh.getLastRow() === 0) sh.appendRow(C_HEAD);
+  else sh.getRange(1, 1, 1, C_HEAD.length).setValues([C_HEAD]);
+  sh.getRange(1, 1, 1, C_HEAD.length).setBackground('#7b3f61').setFontColor('#ffffff')
+    .setFontWeight('bold').setHorizontalAlignment('center').setVerticalAlignment('middle');
+  sh.setFrozenRows(1);
+  sh.setRowHeight(1, 34);
+  var w = [90, 90, 120, 120, 90, 100, 100, 80, 200, 60, 60, 70, 300, 90, 220, 100,
+           70, 100, 90, 100, 160, 160, 160, 200, 100, 160, 90];
+  w.forEach(function (x, i) { sh.setColumnWidth(i + 1, x); });
+  var maxR = Math.max(sh.getMaxRows() - 1, 1);
+  var rng = sh.getRange(2, 1, maxR, C_HEAD.length);
+  sh.setConditionalFormatRules([
+    // 잔여회차 1 이하 → 재구매 관리 대상
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=AND($J2<>"",$L2<=1)')
+      .setBackground('#ffd9d9').setRanges([rng]).build(),
+    // 연락처 없음 → 확인 필요
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=AND($B2<>"",$C2="")')
+      .setBackground('#fff4d6').setRanges([rng]).build()
+  ]);
+  var shopList = shops().map(function (s) { return s.name; });
+  shopList.push('둘다');
+  if (shopList.length > 1) {
+    sh.getRange(2, C.SHOP, maxR, 1).setDataValidation(
+      SpreadsheetApp.newDataValidation().requireValueInList(shopList, true).setAllowInvalid(true).build());
+  }
+  sh.getRange(2, C.FIRST, maxR, 2).setNumberFormat('yyyy-mm-dd');
+  sh.getRange(2, C.NEXT, maxR, 1).setNumberFormat('yyyy-mm-dd');
+  sh.getRange(2, C.BIRTH, maxR, 1).setNumberFormat('yyyy-mm-dd');
+  sh.getRange(2, C.PREPAID, maxR, 1).setNumberFormat('#,##0');
+  sh.getRange(2, C.GENDER, maxR, 1).setDataValidation(
+    SpreadsheetApp.newDataValidation().requireValueInList(['여', '남'], true).setAllowInvalid(true).build());
+  sh.getRange(2, C.POINT, maxR, 1).setNumberFormat('#,##0');
+  sh.getRange(2, C.GRADE, maxR, 1).setDataValidation(
+    SpreadsheetApp.newDataValidation().requireValueInList(GRADES, true).setAllowInvalid(true).build());
+  return sh;
+}
+
+/* ---------- 발송로그 ---------- */
+
+function buildLogSheet() {
+  var sh = getOrCreateSheet(SH.LOG);
+  if (sh.getLastRow() === 0) sh.appendRow(L_HEAD);
+  else sh.getRange(1, 1, 1, L_HEAD.length).setValues([L_HEAD]);
+  sh.getRange(1, 1, 1, L_HEAD.length).setBackground('#3d5a3d').setFontColor('#ffffff').setFontWeight('bold');
+  sh.setFrozenRows(1);
+  [140, 110, 100, 90, 120, 80, 80, 80, 380, 220].forEach(function (x, i) { sh.setColumnWidth(i + 1, x); });
+  return sh;
+}
+
+/* ---------- 고객프로필 ---------- */
+
+function buildProfileSheet() {
+  var sh = getOrCreateSheet(SH.PROFILE);
+  sh.clear();
+  sh.clearNotes();
+  try { sh.getRange(1, 1, sh.getMaxRows(), sh.getMaxColumns()).clearDataValidations(); } catch (e) {}
+
+  sh.getRange('A1:H1').merge().setValue('👤 고객 프로필 조회')
+    .setBackground('#7b3f61').setFontColor('#ffffff').setFontWeight('bold')
+    .setFontSize(14).setHorizontalAlignment('center');
+  sh.setRowHeight(1, 36);
+
+  sh.getRange('A3').setValue('① 검색어').setFontWeight('bold');
+  sh.getRange('B3').setValue('').setBackground('#fffbe6').setBorder(true, true, true, true, false, false);
+  sh.getRange('C3').setValue('← 이름 또는 전화 뒤 4자리를 입력하고 Enter').setFontColor('#888888');
+
+  sh.getRange('A4').setValue('② 고객 선택').setFontWeight('bold');
+  sh.getRange('B4').setValue('').setBackground('#eef5ff').setBorder(true, true, true, true, false, false);
+  sh.getRange('C4').setValue('← 목록에서 고르면 아래에 자동으로 표시됩니다').setFontColor('#888888');
+
+  var labels = [
+    ['이름', '연락처'],
+    ['주이용샵', '안심번호'],
+    ['총방문횟수', '최근방문일'],
+    ['회차상품', '잔여회차 / 총회차'],
+    ['다음 예약', '사진폴더'],
+    ['메모', '']
+  ];
+  var r = 6;
+  sh.getRange(r - 1, 1, 1, 8).merge().setValue('기본 정보')
+    .setBackground('#f2e7ee').setFontWeight('bold');
+  labels.forEach(function (pair, i) {
+    sh.getRange(r + i, 1).setValue(pair[0]).setFontWeight('bold').setBackground('#faf6f8');
+    if (pair[1]) {
+      sh.getRange(r + i, 3).setValue(pair[1]).setFontWeight('bold').setBackground('#faf6f8');
+      sh.getRange(r + i, 2).setBackground('#ffffff');
+      sh.getRange(r + i, 4, 1, 5).merge().setBackground('#ffffff');
+    } else {
+      sh.getRange(r + i, 2, 1, 7).merge().setBackground('#ffffff').setWrap(true)
+        .setVerticalAlignment('top');
+      sh.setRowHeight(r + i, 48);
+    }
+  });
+
+  var hr = r + labels.length + 1; // 방문 히스토리 헤더 행
+  sh.getRange(hr, 1, 1, 8).merge().setValue('방문 히스토리 (최근 순)')
+    .setBackground('#f2e7ee').setFontWeight('bold');
+  var hh = ['방문일', '샵', '시술내용(예약상품)', '상세내용(선택메뉴)', '금액', '담당자', '상태', '사진'];
+  sh.getRange(hr + 1, 1, 1, 8).setValues([hh])
+    .setBackground('#7b3f61').setFontColor('#ffffff').setFontWeight('bold')
+    .setHorizontalAlignment('center');
+
+  [110, 200, 110, 260, 100, 80, 80, 200].forEach(function (x, i) { sh.setColumnWidth(i + 1, x); });
+  sh.setColumnWidth(2, 200);
+  sh.setColumnWidth(4, 260);
+
+  // 숨김 영역: 검색 후보 목록 (Z열)
+  sh.getRange('Z1').setValue('검색후보(자동)');
+  sh.hideColumns(26);
+
+  PropertiesService.getScriptProperties().setProperty('PROFILE_HIST_ROW', String(hr + 2));
+  PropertiesService.getScriptProperties().setProperty('PROFILE_INFO_ROW', String(r));
+  return sh;
+}
+
+function profileRows() {
+  var p = PropertiesService.getScriptProperties();
+  return {
+    info: Number(p.getProperty('PROFILE_INFO_ROW') || 6),
+    hist: Number(p.getProperty('PROFILE_HIST_ROW') || 14)
+  };
+}
+
+/* ---------- 시술메뉴 · 매출내역 ---------- */
+
+var MENU_HEAD = ['샵', '시술명', '기본금액', '소요시간(분)'];
+var SLOG_HEAD = ['등록시각', '예약번호', '샵', '고객ID', '고객명', '시술일', '시술명', '금액', '결제수단', '담당자', '네이버결제액'];
+
+function buildMenuSheet() {
+  var sh = getOrCreateSheet(SH.MENU);
+  if (headerMismatch(sh, MENU_HEAD)) {
+    sh.clear();
+    sh.getRange(1, 1, 1, MENU_HEAD.length).setValues([MENU_HEAD])
+      .setFontWeight('bold').setBackground('#1F3864').setFontColor('#ffffff');
+    sh.setFrozenRows(1);
+    sh.setColumnWidth(1, 140); sh.setColumnWidth(2, 340);
+    sh.setColumnWidth(3, 110); sh.setColumnWidth(4, 110);
+    var seed = defaultMenuRows();
+    if (seed.length) sh.getRange(2, 1, seed.length, MENU_HEAD.length).setValues(seed);
+  }
+  return sh;
+}
+
+function defaultMenuRows() {
+  var list = shops();
+  var s1 = list[0] ? list[0].name : '';
+  var s2 = list[1] ? list[1].name : '';
+  var out = [];
+  var add = function (shop, arr) {
+    if (!shop) return;
+    arr.forEach(function (x) { out.push([shop, x[0], x[1], x[2] || 0]); });
+  };
+  /* 당신을 그리다 — 퍼스널컬러진단 */
+  add(s1, [
+    ['LIFE 1인', 300000], ['LIFE 2인', 500000], ['LIFE 3인', 690000],
+    ['YOUR 1인', 200000], ['YOUR 2인', 300000], ['YOUR 3인', 390000],
+    ['DRAW 1인', 110000], ['DRAW 2인', 209000],
+    ['DRAW 3인', 240000], ['DRAW 4인', 300000],
+    ['웨딩 컨설팅', 339000]
+  ]);
+  /* 당신을 그리다 — 메이크업클래스 */
+  add(s1, [
+    ['메이크업클래스 1인', 180000], ['메이크업클래스 2인', 320000],
+    ['메이크업클래스 3인', 360000], ['메이크업클래스 4인', 440000]
+  ]);
+  /* 당신을 그리다 — 추가 옵션 */
+  add(s1, [
+    ['[추가] 헤어 디자인+컬러 추천', 20000],
+    ['[추가] 아이브로우 디자인+컬러 추천', 20000],
+    ['[추가] 패션 스타일링 추천+쥬얼리 추천', 20000],
+    ['[추가] 안경 디자인+컬러 추천', 20000],
+    ['[추가] 넥라인 추천', 20000],
+    ['[추가] 얼굴 골격 분석', 50000],
+    ['[추가] 체형 골격 분석', 50000],
+    ['[추가] 메이크업클래스 1인', 150000],
+    ['[추가] 메이크업 클래스 2인', 290000]
+  ]);
+  /* 당신을 그리다 — 제품 판매 */
+  add(s1, [
+    ['[제품] 브러쉬 파우더', 20000],
+    ['[제품] 브러쉬 쉐딩', 20000],
+    ['[제품] 브러쉬 치크', 20000],
+    ['[제품] 브러쉬 섀도우', 10000],
+    ['[제품] 브러쉬 하이라이트', 20000]
+  ]);
+  /* 닥터 뷰티랩 */
+  add(s2, [
+    ['퍼스널 브로우', 290000, 80],
+    ['정수리 커버', 350000, 50],
+    ['헤어라인 커버', 250000, 50],
+    ['가르마 커버', 250000, 50],
+    ['[추가] 커버 1부위 추가', 250000, 50],
+    ['눈썹 리터치', 0, 50],
+    ['두피 리터치', 0, 50],
+    ['두피 생장 5회', 990000, 50],
+    ['립 틴트', 360000, 110]
+  ]);
+  return out;
+}
+
+function headerMismatch(sh, head) {
+  if (sh.getLastRow() === 0) return true;
+  var cur = sh.getRange(1, 1, 1, head.length).getValues()[0];
+  for (var i = 0; i < head.length; i++) {
+    if (String(cur[i] || '').trim() !== head[i]) return true;
+  }
+  return false;
+}
+
+function buildSlogSheet() {
+  var sh = getOrCreateSheet(SH.SLOG);
+  /* 칸이 늘어난 경우: 기존 매출기록을 지우지 않고 새 칸만 덧붙입니다 */
+  if (sh.getLastRow() > 0 && headerMismatch(sh, SLOG_HEAD)) {
+    var oldHead = SLOG_HEAD.slice(0, 10);
+    if (!headerMismatch(sh, oldHead)) {
+      sh.getRange(1, 11, 1, SLOG_HEAD.length - 10)
+        .setValues([SLOG_HEAD.slice(10)])
+        .setFontWeight('bold').setBackground('#7B3F61').setFontColor('#ffffff');
+      sh.setColumnWidth(11, 120);
+    }
+  }
+  if (headerMismatch(sh, SLOG_HEAD)) {
+    sh.clear();
+    sh.getRange(1, 1, 1, SLOG_HEAD.length).setValues([SLOG_HEAD])
+      .setFontWeight('bold').setBackground('#7B3F61').setFontColor('#ffffff');
+    sh.setFrozenRows(1);
+    [150, 120, 140, 90, 100, 100, 340, 110, 110, 90, 120].forEach(function (x, i) {
+      sh.setColumnWidth(i + 1, x);
+    });
+  }
+  return sh;
+}
+
+var _menuCache = null;
+function readMenu() {
+  if (_menuCache) return _menuCache;
+  var sh = buildMenuSheet();
+  var last = sh.getLastRow();
+  if (last < 2) { _menuCache = []; return _menuCache; }
+  _menuCache = sh.getRange(2, 1, last - 1, MENU_HEAD.length).getValues()
+    .filter(function (r) { return String(r[1] || '').trim(); })
+    .map(function (r) {
+      return { shop: String(r[0] || '').trim(), name: String(r[1]).trim(),
+               price: Number(r[2] || 0), min: Number(r[3] || 0) };
+    });
+  return _menuCache;
+}
+
+function readSlog() {
+  var sh = buildSlogSheet();
+  var last = sh.getLastRow();
+  if (last < 2) return [];
+  return sh.getRange(2, 1, last - 1, SLOG_HEAD.length).getValues()
+    .filter(function (r) { return String(r[1] || '').trim(); })
+    .map(function (r) {
+      return { at: String(r[0] || ''), resno: String(r[1]).trim(), shop: String(r[2] || '').trim(),
+               custId: String(r[3] || '').trim(), name: String(r[4] || '').trim(), date: ymd(r[5]),
+               item: String(r[6] || '').trim(), amount: Number(r[7] || 0),
+               pay: String(r[8] || '').trim(), staff: String(r[9] || '').trim(),
+               npay: Number(r[10] || 0) };
+    });
+}
+
+/* ---------- 매출통계 ---------- */
+
+function buildSalesSheets() {
+  shops().forEach(function (s) { buildSalesSheet(s); });
+}
+
+function buildSalesSheet(shop) {
+  var name = SH.SALES + shop.short;
+  var sh = getOrCreateSheet(name);
+  var year = new Date().getFullYear();
+  var prevYear = sh.getRange('B2').getValue();
+  sh.clear();
+
+  sh.getRange('A1:N1').merge().setValue('💰 ' + shop.name + ' 매출통계')
+    .setBackground('#1f3864').setFontColor('#ffffff').setFontWeight('bold')
+    .setFontSize(14).setHorizontalAlignment('center');
+  sh.setRowHeight(1, 36);
+
+  sh.getRange('A2').setValue('연도').setFontWeight('bold').setBackground('#eeeeee');
+  sh.getRange('B2').setValue(prevYear || year).setBackground('#fffbe6')
+    .setBorder(true, true, true, true, false, false).setNumberFormat('0');
+  sh.getRange('C2').setValue('← 연도를 바꾸면 표가 자동으로 바뀝니다').setFontColor('#888888');
+
+  sh.getRange('D2').setValue('연간 총매출').setFontWeight('bold').setBackground('#eeeeee');
+  sh.getRange('E2').setFormula('=SUM(B5:M35)').setNumberFormat('₩#,##0').setFontWeight('bold');
+
+  // 헤더: 일 / 1월~12월
+  var head = ['일'];
+  for (var m = 1; m <= 12; m++) head.push(m + '월');
+  sh.getRange(4, 1, 1, 13).setValues([head])
+    .setBackground('#1f3864').setFontColor('#ffffff').setFontWeight('bold')
+    .setHorizontalAlignment('center');
+
+  var rows = [];
+  for (var d = 1; d <= 31; d++) {
+    var row = [d];
+    for (var mm = 1; mm <= 12; mm++) {
+      row.push('=IFERROR(IF(DAY(DATE($B$2,' + mm + ',$A' + (4 + d) + '))<>$A' + (4 + d) +
+        ',"",SUMIFS(' + q(SH.DATA) + '!$N:$N,' + q(SH.DATA) + '!$B:$B,$A$3,' +
+        q(SH.DATA) + '!$G:$G,DATE($B$2,' + mm + ',$A' + (4 + d) + '),' +
+        q(SH.DATA) + '!$C:$C,"<>' + STATUS.CANCEL + '")),"")');
+    }
+    rows.push(row);
+  }
+  sh.getRange(5, 1, 31, 13).setValues(rows);
+
+  // 샵 이름을 A3 에 (수식 참조용, 눈에 안 띄게)
+  sh.getRange('A3').setValue(shop.name).setFontColor('#cccccc').setFontSize(8);
+
+  // 월 합계
+  sh.getRange(36, 1).setValue('월 합계').setFontWeight('bold').setBackground('#eeeeee');
+  var sums = [];
+  for (var k = 0; k < 12; k++) {
+    var col = String.fromCharCode(66 + k); // B..M
+    sums.push('=SUM(' + col + '5:' + col + '35)');
+  }
+  sh.getRange(36, 2, 1, 12).setValues([sums]).setFontWeight('bold').setBackground('#eeeeee');
+
+  sh.getRange(37, 1).setValue('건수').setFontWeight('bold');
+  var cnt = [];
+  for (var k2 = 1; k2 <= 12; k2++) {
+    cnt.push('=COUNTIFS(' + q(SH.DATA) + '!$B:$B,$A$3,' + q(SH.DATA) + '!$C:$C,"<>' + STATUS.CANCEL + '",' +
+      q(SH.DATA) + '!$G:$G,">="&DATE($B$2,' + k2 + ',1),' +
+      q(SH.DATA) + '!$G:$G,"<"&EDATE(DATE($B$2,' + k2 + ',1),1))');
+  }
+  sh.getRange(37, 2, 1, 12).setValues([cnt]);
+
+  sh.getRange(5, 2, 32, 12).setNumberFormat('#,##0');
+  sh.setColumnWidth(1, 60);
+  for (var c = 2; c <= 13; c++) sh.setColumnWidth(c, 95);
+  sh.setFrozenRows(4);
+  sh.getRange(5, 1, 31, 1).setHorizontalAlignment('center').setBackground('#f7f7f7');
+  return sh;
+}
+
+/* 시트 이름을 수식에 쓸 때 따옴표 처리 */
+function q(name) { return "'" + String(name).replace(/'/g, "''") + "'"; }
+
+/* ---------- 홈 ---------- */
+
+function buildHomeSheet() {
+  var sh = getOrCreateSheet(SH.HOME);
+  sh.clear();
+  sh.clearNotes();
+  sh.getRange('A1:H1').merge().setValue('🌸  뷰티샵 예약·고객 관리')
+    .setBackground('#1f3864').setFontColor('#ffffff').setFontWeight('bold')
+    .setFontSize(18).setHorizontalAlignment('center').setVerticalAlignment('middle');
+  sh.setRowHeight(1, 52);
+
+  sh.getRange('A2:H2').merge()
+    .setValue('상단 메뉴  [📅 샵 관리]  에서 모든 기능을 실행합니다.')
+    .setHorizontalAlignment('center').setFontColor('#666666');
+
+  [140, 130, 130, 130, 130, 130, 130, 200].forEach(function (x, i) { sh.setColumnWidth(i + 1, x); });
+  sh.setHiddenGridlines(true);
+  refreshHome();
+  return sh;
+}
+
+function refreshHome() {
+  var sh = ss().getSheetByName(SH.HOME);
+  if (!sh) return;
+  var today = new Date();
+  var t0 = ymd(today);
+  var rows = readData();
+  var list = shops();
+
+  var box = function (row, title, color) {
+    sh.getRange(row, 1, 1, 8).merge().setValue(title)
+      .setBackground(color).setFontColor('#ffffff').setFontWeight('bold')
+      .setVerticalAlignment('middle');
+    sh.setRowHeight(row, 28);
+  };
+
+  sh.getRange(4, 1, 60, 8).clearContent().clearFormat().setBackground(null);
+
+  var r = 4;
+  box(r, '  📌 오늘 (' + t0 + ') 예약', '#7b3f61'); r++;
+
+  list.forEach(function (s) {
+    var todays = rows.filter(function (x) {
+      return x[D.SHOP - 1] === s.name && ymd(x[D.DATE - 1]) === t0 && x[D.STATUS - 1] !== STATUS.CANCEL;
+    }).sort(function (a, b) { return String(a[D.TIME - 1]).localeCompare(String(b[D.TIME - 1])); });
+
+    sh.getRange(r, 1, 1, 8).merge()
+      .setValue('▸ ' + s.name + '  —  ' + todays.length + '건')
+      .setFontWeight('bold').setBackground('#f2e7ee');
+    r++;
+    if (todays.length === 0) {
+      sh.getRange(r, 1, 1, 8).merge().setValue('   (오늘 예약 없음)').setFontColor('#999999');
+      r++;
+    } else {
+      sh.getRange(r, 1, 1, 5).setValues([['시간', '예약자', '연락처', '시술', '담당자']])
+        .setFontWeight('bold').setBackground('#eeeeee');
+      r++;
+      var vals = todays.map(function (x) {
+        return [timeStr(x[D.TIME - 1]), x[D.NAME - 1], x[D.PHONE - 1] || '⚠︎ 없음',
+                x[D.PRODUCT - 1], x[D.STAFF - 1] || ''];
+      });
+      sh.getRange(r, 1, vals.length, 5).setValues(vals);
+      r += vals.length;
+    }
+    r++;
+  });
+
+  // 내일 예약 요약
+  var tmr = new Date(today.getTime() + 86400000);
+  var t1 = ymd(tmr);
+  var tmrCount = rows.filter(function (x) {
+    return ymd(x[D.DATE - 1]) === t1 && x[D.STATUS - 1] !== STATUS.CANCEL;
+  }).length;
+
+  box(r, '  ⚠️ 확인이 필요한 항목', '#b03a2e'); r++;
+  var needCheck = rows.filter(function (x) { return x[D.STATUS - 1] === STATUS.CHECK; }).length;
+  var noPhone = rows.filter(function (x) {
+    return x[D.STATUS - 1] === STATUS.OK && !x[D.PHONE - 1] && !x[D.SAFE - 1] &&
+           toDate(x[D.DATE - 1]) && toDate(x[D.DATE - 1]) >= toDate(t0);
+  }).length;
+  var cust = ss().getSheetByName(SH.CUST);
+  var lowRound = 0;
+  if (cust && cust.getLastRow() > 1) {
+    cust.getRange(2, 1, cust.getLastRow() - 1, C_HEAD.length).getValues().forEach(function (x) {
+      if (x[C.TOTAL - 1] !== '' && Number(x[C.LEFT - 1]) <= 1) lowRound++;
+    });
+  }
+  var checks = [
+    ['메일을 못 읽어 "확인필요"로 남은 예약', needCheck + ' 건', needCheck ? '→ 네이버예약_데이터 탭에서 직접 채워주세요' : '없음'],
+    ['연락처가 비어있는 예약 (문자 발송 불가)', noPhone + ' 건', noPhone ? '→ 스마트플레이스에서 확인 후 입력' : '없음'],
+    ['잔여회차 1회 이하 고객 (재구매 안내 대상)', lowRound + ' 명', lowRound ? '→ 고객DB 탭 붉은색 행' : '없음'],
+    ['내일 예약', tmrCount + ' 건', '']
+  ];
+  sh.getRange(r, 1, checks.length, 3).setValues(checks);
+  sh.getRange(r, 1, checks.length, 1).setFontWeight('bold');
+  sh.getRange(r, 3, checks.length, 1).setFontColor('#888888');
+  r += checks.length + 1;
+
+  box(r, '  ⚙️ 상태', '#3d5a3d'); r++;
+  var st = [
+    ['마지막 메일 확인', cfgStr('마지막 메일확인 시각', '아직 없음'), ''],
+    ['메일 자동수집', cfgOn('메일 자동수집 사용') ? '켜짐' : '꺼짐', ''],
+    ['문자/알림톡', cfgStr('알리고 API키', '') ? (cfgOn('테스트 모드') ? '테스트 모드 (실제 발송 안 함)' : '실제 발송 켜짐') : '미설정 (설정 탭에 알리고 정보 입력 필요)', ''],
+    ['마지막 오류', cfgStr('마지막 오류', '없음'), '']
+  ];
+  sh.getRange(r, 1, st.length, 3).setValues(st);
+  sh.getRange(r, 1, st.length, 1).setFontWeight('bold');
+  r += st.length + 1;
+
+  sh.getRange(r, 1, 1, 8).merge()
+    .setValue('업데이트: ' + nowStr()).setFontColor('#aaaaaa').setFontSize(9);
+  sh.setHiddenGridlines(true);
+}
+
+/* =========================================================
+ *  2. 예약캘린더 (월별)
+ * ========================================================= */
+
+var DOW = ['일', '월', '화', '수', '목', '금', '토'];
+
+function slotCount() {
+  var n = Number(cfg('하루 예약칸 수', 10));
+  if (!n || n < 3) n = 3;
+  if (n > 25) n = 25;
+  return n;
+}
+
+function calSheetName(shop, date) {
+  return SH.CAL + shop.short + '_' + fmt(date, 'yyyy-MM');
+}
+
+function nextMonthDate(d) { return new Date(d.getFullYear(), d.getMonth() + 1, 1); }
+
+/* 날짜 → 캘린더 안의 위치 */
+function calPos(date) {
+  var first = new Date(date.getFullYear(), date.getMonth(), 1);
+  var offset = first.getDay();                  // 0=일
+  var idx = offset + date.getDate() - 1;
+  var week = Math.floor(idx / 7);
+  var dow = idx % 7;
+  var N = slotCount();
+  var dateRow = 3 + week * (2 + N);
+  return {
+    week: week, dow: dow,
+    dateRow: dateRow,
+    subRow: dateRow + 1,
+    firstSlot: dateRow + 2,
+    col: 1 + dow * 3,
+    slots: N
+  };
+}
+
+function weeksInMonth(date) {
+  var first = new Date(date.getFullYear(), date.getMonth(), 1);
+  var days = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  return Math.ceil((first.getDay() + days) / 7);
+}
+
+/* 캘린더 만들기 (이미 있으면 서식만 유지) */
+function buildCalendarSheet(shop, date) {
+  var name = calSheetName(shop, date);
+  var exists = ss().getSheetByName(name);
+  var sh = getOrCreateSheet(name);
+  if (exists) return sh;
+
+  var N = slotCount();
+  var W = weeksInMonth(date);
+  var totalRows = 2 + W * (2 + N) + 2;
+  var totalCols = 21;
+
+  if (sh.getMaxColumns() < totalCols) sh.insertColumnsAfter(sh.getMaxColumns(), totalCols - sh.getMaxColumns());
+  if (sh.getMaxRows() < totalRows) sh.insertRowsAfter(sh.getMaxRows(), totalRows - sh.getMaxRows());
+  sh.clear();
+  sh.setHiddenGridlines(true);
+
+  // 제목
+  sh.getRange(1, 1, 1, totalCols).merge()
+    .setValue(shop.name + '   ' + fmt(date, 'yyyy년 M월'))
+    .setBackground(shop.idx === 1 ? '#7b3f61' : '#1f3864')
+    .setFontColor('#ffffff').setFontWeight('bold').setFontSize(16)
+    .setHorizontalAlignment('center').setVerticalAlignment('middle');
+  sh.setRowHeight(1, 44);
+
+  // 요일 헤더
+  for (var d = 0; d < 7; d++) {
+    var c = 1 + d * 3;
+    sh.getRange(2, c, 1, 3).merge().setValue(DOW[d])
+      .setHorizontalAlignment('center').setFontWeight('bold')
+      .setBackground(d === 0 ? '#ffe5e5' : (d === 6 ? '#e5efff' : '#efefef'))
+      .setFontColor(d === 0 ? '#c00000' : (d === 6 ? '#0044aa' : '#333333'));
+  }
+  sh.setRowHeight(2, 26);
+
+  var daysInMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  var staffList = cfgStr('담당자 명단', '').split(',').map(function (s) { return s.trim(); })
+                    .filter(function (s) { return s; });
+  var staffRule = staffList.length
+    ? SpreadsheetApp.newDataValidation().requireValueInList(staffList, true).setAllowInvalid(true).build()
+    : null;
+
+  for (var w = 0; w < W; w++) {
+    var dateRow = 3 + w * (2 + N);
+    sh.setRowHeight(dateRow, 24);
+    sh.setRowHeight(dateRow + 1, 20);
+    for (var dd = 0; dd < 7; dd++) {
+      var col = 1 + dd * 3;
+      var dayNum = w * 7 + dd - new Date(date.getFullYear(), date.getMonth(), 1).getDay() + 1;
+      var inMonth = dayNum >= 1 && dayNum <= daysInMonth;
+
+      var dcell = sh.getRange(dateRow, col, 1, 3).merge();
+      dcell.setValue(inMonth ? dayNum : '')
+        .setFontWeight('bold').setHorizontalAlignment('left').setVerticalAlignment('middle')
+        .setBackground(inMonth ? (dd === 0 ? '#ffeaea' : (dd === 6 ? '#eaf2ff' : '#f5f5f5')) : '#dddddd')
+        .setFontColor(dd === 0 ? '#c00000' : (dd === 6 ? '#0044aa' : '#333333'));
+
+      sh.getRange(dateRow + 1, col, 1, 3)
+        .setValues([['시간', '예약자', '담당자']])
+        .setFontSize(8).setFontColor('#888888').setHorizontalAlignment('center')
+        .setBackground('#fafafa');
+
+      var slotRange = sh.getRange(dateRow + 2, col, N, 3);
+      slotRange.setFontSize(10).setVerticalAlignment('middle');
+      if (!inMonth) slotRange.setBackground('#f0f0f0');
+      if (staffRule) sh.getRange(dateRow + 2, col + 2, N, 1).setDataValidation(staffRule);
+      sh.getRange(dateRow + 2, col, N, 1).setHorizontalAlignment('center').setNumberFormat('@');
+    }
+    // 주 구분선
+    sh.getRange(dateRow, 1, 2 + N, 21).setBorder(true, true, true, true, false, null, '#bbbbbb', SpreadsheetApp.BorderStyle.SOLID);
+  }
+  // 열 너비
+  for (var cc = 0; cc < 7; cc++) {
+    sh.setColumnWidth(1 + cc * 3, 52);
+    sh.setColumnWidth(2 + cc * 3, 96);
+    sh.setColumnWidth(3 + cc * 3, 66);
+  }
+  for (var rr = 3; rr < 3 + W * (2 + N); rr++) {
+    var off = (rr - 3) % (2 + N);
+    if (off >= 2) sh.setRowHeight(rr, 21);
+  }
+  var footRow = 2 + W * (2 + N) + 1;
+  sh.getRange(footRow, 1, 1, 21).merge()
+    .setValue('빈 칸에 시간·예약자를 직접 적은 뒤 메뉴 → "수동예약 반영"을 누르면 고객DB와 문자 발송 대상에 들어갑니다.')
+    .setFontColor('#999999').setFontSize(9);
+  sh.setFrozenRows(2);
+  return sh;
+}
+
+function createCalendarsForMonth(date) {
+  shops().forEach(function (s) {
+    buildCalendarSheet(s, date);
+    refreshCalendarMonth(s, date);
+  });
+}
+
+function createNextMonthCalendars() {
+  try {
+    var d = nextMonthDate(new Date());
+    createCalendarsForMonth(d);
+    var names = shops().map(function (s) { return calSheetName(s, d); }).join('\n');
+    alert('다음달 캘린더를 만들었습니다.\n\n' + names);
+  } catch (e) { logError('다음달 캘린더 생성', e); alert('문제가 생겼습니다: ' + e.message); }
+}
+
+function refreshThisMonthCalendars() {
+  try {
+    createCalendarsForMonth(new Date());
+    toast('이번달 캘린더를 다시 그렸습니다.');
+  } catch (e) { logError('이번달 캘린더 갱신', e); }
+}
+
+/* 한 달치 예약을 캘린더에 다시 그림 */
+function refreshCalendarMonth(shop, date) {
+  var sh = ss().getSheetByName(calSheetName(shop, date));
+  if (!sh) return;
+  var y = date.getFullYear(), m = date.getMonth();
+  var rows = readData().filter(function (x) {
+    var dt = toDate(x[D.DATE - 1]);
+    return x[D.SHOP - 1] === shop.name && dt && dt.getFullYear() === y && dt.getMonth() === m;
+  });
+  var byDay = {};
+  rows.forEach(function (x) {
+    var dt = toDate(x[D.DATE - 1]);
+    var k = dt.getDate();
+    (byDay[k] = byDay[k] || []).push(x);
+  });
+  var daysInMonth = new Date(y, m + 1, 0).getDate();
+  for (var d = 1; d <= daysInMonth; d++) {
+    drawDay(sh, new Date(y, m, d), byDay[d] || []);
+  }
+}
+
+/* 하루 칸 다시 그리기 */
+function drawDay(sh, date, list) {
+  var p = calPos(date);
+  var N = p.slots;
+  list = list.slice().sort(function (a, b) {
+    return timeStr(a[D.TIME - 1]).localeCompare(timeStr(b[D.TIME - 1]));
+  });
+  var vals = [], notes = [];
+  for (var i = 0; i < N; i++) {
+    if (i < list.length) {
+      var x = list[i];
+      var mark = (x[D.STATUS - 1] === STATUS.CANCEL) ? '취소 ' : '';
+      vals.push([timeStr(x[D.TIME - 1]), mark + (x[D.NAME - 1] || ''), x[D.STAFF - 1] || '']);
+      notes.push(['', '예약번호:' + x[D.RESNO - 1] +
+        '\n상품:' + (x[D.PRODUCT - 1] || '') +
+        '\n연락처:' + (x[D.PHONE - 1] || x[D.SAFE - 1] || '없음') +
+        '\n상태:' + x[D.STATUS - 1], '']);
+    } else {
+      vals.push(['', '', '']);
+      notes.push(['', '', '']);
+    }
+  }
+  var rng = sh.getRange(p.firstSlot, p.col, N, 3);
+  rng.setValues(vals);
+  rng.setNotes(notes);
+  // 서식: 취소는 회색 취소선
+  rng.setFontLine('none').setFontColor('#000000');
+  for (var j = 0; j < list.length && j < N; j++) {
+    if (list[j][D.STATUS - 1] === STATUS.CANCEL) {
+      sh.getRange(p.firstSlot + j, p.col, 1, 3).setFontLine('line-through').setFontColor('#aaaaaa');
+    } else if (list[j][D.STATUS - 1] === STATUS.DONE) {
+      sh.getRange(p.firstSlot + j, p.col, 1, 3).setFontColor('#2e7d32');
+    } else if (!list[j][D.PHONE - 1] && !list[j][D.SAFE - 1]) {
+      sh.getRange(p.firstSlot + j, p.col + 1, 1, 1).setFontColor('#c26a00');
+    }
+  }
+}
+
+/* 예약 1건을 캘린더에 반영 (해당 날짜만 다시 그림) */
+function syncCalendarForBooking(shopName, dateVal) {
+  var shop = shopByName(shopName);
+  var dt = toDate(dateVal);
+  if (!shop || !dt) return;
+  var sheetName = calSheetName(shop, dt);
+  var sh = ss().getSheetByName(sheetName);
+  if (!sh) { buildCalendarSheet(shop, dt); sh = ss().getSheetByName(sheetName); }
+  if (!sh) return;
+  var list = readData().filter(function (x) {
+    return x[D.SHOP - 1] === shopName && ymd(x[D.DATE - 1]) === ymd(dt);
+  });
+  drawDay(sh, dt, list);
+}
+
+/* ---------- 수동예약 반영 ---------- */
+
+function importManualBookings() {
+  try {
+    var added = 0;
+    var months = [new Date(), nextMonthDate(new Date())];
+    var dataSh = sheetOf(SH.DATA);
+    shops().forEach(function (shop) {
+      months.forEach(function (mdate) {
+        var sh = ss().getSheetByName(calSheetName(shop, mdate));
+        if (!sh) return;
+        var y = mdate.getFullYear(), m = mdate.getMonth();
+        var days = new Date(y, m + 1, 0).getDate();
+        for (var d = 1; d <= days; d++) {
+          var date = new Date(y, m, d);
+          var p = calPos(date);
+          var rng = sh.getRange(p.firstSlot, p.col, p.slots, 3);
+          var vals = rng.getValues();
+          var notes = rng.getNotes();
+          for (var i = 0; i < vals.length; i++) {
+            var nameCell = String(vals[i][1]).trim();
+            var timeCell = String(vals[i][0]).trim();
+            if (!nameCell) continue;
+            if (notes[i][1] && notes[i][1].indexOf('예약번호:') === 0) continue; // 이미 등록됨
+            var resno = 'M' + fmt(new Date(), 'yyMMddHHmmss') + Math.floor(Math.random() * 90 + 10);
+            var row = newDataRow();
+            row[D.RESNO - 1]   = resno;
+            row[D.SHOP - 1]    = shop.name;
+            row[D.STATUS - 1]  = STATUS.OK;
+            row[D.NAME - 1]    = nameCell;
+            row[D.DATE - 1]    = date;
+            row[D.TIME - 1]    = normTime(timeCell) || timeCell;
+            row[D.STAFF - 1]   = String(vals[i][2]).trim();
+            row[D.SOURCE - 1]  = '수동';
+            row[D.PROCAT - 1]  = nowStr();
+            row[D.MEMO - 1]    = '캘린더에서 직접 입력';
+            dataSh.appendRow(row);
+            added++;
+          }
+        }
+      });
+    });
+    if (added > 0) {
+      rematchCustomers();
+      shops().forEach(function (s) {
+        refreshCalendarMonth(s, new Date());
+        refreshCalendarMonth(s, nextMonthDate(new Date()));
+      });
+      refreshHome();
+    }
+    alert(added > 0
+      ? added + '건의 수동예약을 반영했습니다.\n\n연락처가 비어 있으니 [네이버예약_데이터] 또는 [고객DB] 탭에서 전화번호를 넣어주세요.\n(문자 발송에 필요합니다)'
+      : '새로 반영할 수동예약이 없습니다.');
+  } catch (e) { logError('수동예약 반영', e); alert('문제가 생겼습니다: ' + e.message); }
+}
+
+function newDataRow() {
+  var a = [];
+  for (var i = 0; i < D_HEAD.length; i++) a.push('');
+  return a;
+}
+
+/* =========================================================
+ *  3. 고객DB · 회차관리 · 고객프로필
+ * ========================================================= */
+
+function readCustomers() {
+  var sh = sheetOf(SH.CUST);
+  var last = sh.getLastRow();
+  if (last < 2) return [];
+  return sh.getRange(2, 1, last - 1, C_HEAD.length).getValues();
+}
+
+function newCustomerId() {
+  var rows = readCustomers();
+  var max = 0;
+  rows.forEach(function (r) {
+    var n = Number(String(r[C.ID - 1]).replace(/[^0-9]/g, ''));
+    if (n > max) max = n;
+  });
+  return 'C' + ('0000' + (max + 1)).slice(-4);
+}
+
+/* 예약 1건 → 고객 찾기(없으면 생성). 고객ID 반환 */
+function matchOrCreateCustomer(name, phone, safe, shopName, source) {
+  name = String(name || '').trim();
+  if (!name) return '';
+  var sh = sheetOf(SH.CUST);
+  var rows = readCustomers();
+  var pd = onlyDigits(phone);
+  var sd = onlyDigits(safe);
+
+  var found = -1;
+  if (pd) {
+    for (var i = 0; i < rows.length; i++) {
+      if (onlyDigits(rows[i][C.PHONE - 1]) === pd) { found = i; break; }
+    }
+  }
+  if (found < 0 && sd) {
+    for (var j = 0; j < rows.length; j++) {
+      if (onlyDigits(rows[j][C.SAFE - 1]) === sd) { found = j; break; }
+      if (String(rows[j][C.NAME - 1]).trim() === name && last4(rows[j][C.SAFE - 1]) === last4(sd)) { found = j; break; }
+    }
+  }
+  if (found < 0 && !pd && !sd) {
+    // 연락처가 아예 없는 경우: 같은 이름 + 연락처 미입력 고객에 붙임
+    for (var k = 0; k < rows.length; k++) {
+      if (String(rows[k][C.NAME - 1]).trim() === name && !onlyDigits(rows[k][C.PHONE - 1])) { found = k; break; }
+    }
+  }
+  if (found < 0 && pd) {
+    // 번호는 있는데 못 찾음 → 이름 같고 번호 비어있는 고객에 번호를 채워 넣음
+    for (var m = 0; m < rows.length; m++) {
+      if (String(rows[m][C.NAME - 1]).trim() === name && !onlyDigits(rows[m][C.PHONE - 1])) {
+        sh.getRange(m + 2, C.PHONE).setValue(normPhone(phone));
+        found = m; break;
+      }
+    }
+  }
+
+  if (found >= 0) {
+    var row = found + 2;
+    if (pd && !onlyDigits(rows[found][C.PHONE - 1])) sh.getRange(row, C.PHONE).setValue(normPhone(phone));
+    if (sd && !onlyDigits(rows[found][C.SAFE - 1])) sh.getRange(row, C.SAFE).setValue(normPhone(safe));
+    var curShop = String(rows[found][C.SHOP - 1] || '').trim();
+    if (curShop && curShop !== shopName && curShop !== '둘다') sh.getRange(row, C.SHOP).setValue('둘다');
+    else if (!curShop) sh.getRange(row, C.SHOP).setValue(shopName);
+    return rows[found][C.ID - 1];
+  }
+
+  // 신규 생성
+  var id = newCustomerId();
+  var nr = [];
+  for (var z = 0; z < C_HEAD.length; z++) nr.push('');
+  nr[C.ID - 1] = id;
+  nr[C.NAME - 1] = name;
+  nr[C.PHONE - 1] = pd ? normPhone(phone) : '';
+  nr[C.SAFE - 1] = sd ? normPhone(safe) : '';
+  nr[C.SHOP - 1] = shopName;
+  nr[C.SOURCE - 1] = source || '네이버자동';
+  sh.appendRow(nr);
+  var newRow = sh.getLastRow();
+  sh.getRange(newRow, C.LEFT).setFormula('=IF($J' + newRow + '="","",$J' + newRow + '-$K' + newRow + ')');
+  return id;
+}
+
+/* 전체 재매칭 + 통계 재계산 */
+function rematchCustomers() {
+  try {
+    var dataSh = sheetOf(SH.DATA);
+    var last = dataSh.getLastRow();
+    if (last < 2) { toast('예약 데이터가 없습니다.'); return; }
+    var rows = dataSh.getRange(2, 1, last - 1, D_HEAD.length).getValues();
+    var idCol = [];
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      var id = r[D.CUSTID - 1];
+      if (!id && r[D.NAME - 1]) {
+        id = matchOrCreateCustomer(r[D.NAME - 1], r[D.PHONE - 1], r[D.SAFE - 1],
+                                   r[D.SHOP - 1], r[D.SOURCE - 1] || '네이버자동');
+      } else if (id && r[D.PHONE - 1]) {
+        syncPhoneToCustomer(id, r[D.PHONE - 1]);
+      }
+      idCol.push([id || '']);
+    }
+    dataSh.getRange(2, D.CUSTID, idCol.length, 1).setValues(idCol);
+    recomputeCustomerStats();
+    refreshHome();
+    toast('고객 매칭과 통계를 다시 계산했습니다.');
+  } catch (e) { logError('고객 재매칭', e); alert('문제가 생겼습니다: ' + e.message); }
+}
+
+function syncPhoneToCustomer(custId, phone) {
+  if (!phone) return;
+  var sh = sheetOf(SH.CUST);
+  var rows = readCustomers();
+  for (var i = 0; i < rows.length; i++) {
+    if (rows[i][C.ID - 1] === custId) {
+      if (!onlyDigits(rows[i][C.PHONE - 1])) sh.getRange(i + 2, C.PHONE).setValue(normPhone(phone));
+      return;
+    }
+  }
+}
+
+function recomputeCustomerStats() {
+  var sh = sheetOf(SH.CUST);
+  var rows = readCustomers();
+  if (!rows.length) return;
+  var data = readData();
+  var today = toDate(ymd(new Date()));
+
+  var agg = {};
+  data.forEach(function (x) {
+    var id = x[D.CUSTID - 1];
+    if (!id) return;
+    var st = x[D.STATUS - 1];
+    var dt = toDate(x[D.DATE - 1]);
+    var a = agg[id] || (agg[id] = { visits: 0, first: null, last: null, next: null, product: '', shops: {} });
+    if (st === STATUS.CANCEL) return;
+    a.shops[x[D.SHOP - 1]] = true;
+    if (st === STATUS.DONE) {
+      a.visits++;
+      if (dt) {
+        if (!a.first || dt < a.first) a.first = dt;
+        if (!a.last || dt > a.last) a.last = dt;
+      }
+      if (x[D.PRODUCT - 1]) a.product = x[D.PRODUCT - 1];
+    }
+    if (st === STATUS.OK && dt && dt >= today) {
+      if (!a.next || dt < a.next) a.next = dt;
+    }
+  });
+
+  var out = [];
+  for (var i = 0; i < rows.length; i++) {
+    var id = rows[i][C.ID - 1];
+    var a = agg[id] || { visits: 0, first: null, last: null, next: null, product: '', shops: {} };
+    var shopKeys = Object.keys(a.shops);
+    var shopVal = rows[i][C.SHOP - 1];
+    if (shopKeys.length > 1) shopVal = '둘다';
+    else if (shopKeys.length === 1) shopVal = shopKeys[0];
+    out.push([
+      shopVal,
+      a.first || rows[i][C.FIRST - 1] || '',
+      a.last || '',
+      a.visits
+    ]);
+  }
+  sh.getRange(2, C.SHOP, out.length, 1).setValues(out.map(function (r) { return [r[0]]; }));
+  sh.getRange(2, C.FIRST, out.length, 1).setValues(out.map(function (r) { return [r[1]]; }));
+  sh.getRange(2, C.LAST,  out.length, 1).setValues(out.map(function (r) { return [r[2]]; }));
+  sh.getRange(2, C.VISITS, out.length, 1).setValues(out.map(function (r) { return [r[3]]; }));
+
+  // 사용회차 = 이용완료 건수, 다음예약일
+  var used = [], nexts = [], prod = [];
+  for (var j = 0; j < rows.length; j++) {
+    var idj = rows[j][C.ID - 1];
+    var aj = agg[idj] || { visits: 0, next: null, product: '' };
+    used.push([aj.visits]);
+    nexts.push([aj.next || '']);
+    prod.push([rows[j][C.PRODUCT - 1] || aj.product || '']);
+  }
+  sh.getRange(2, C.USED, used.length, 1).setValues(used);
+  sh.getRange(2, C.NEXT, nexts.length, 1).setValues(nexts);
+  sh.getRange(2, C.PRODUCT, prod.length, 1).setValues(prod);
+  // 잔여회차 수식 보정
+  var f = [];
+  for (var k = 0; k < rows.length; k++) {
+    f.push(['=IF($J' + (k + 2) + '="","",$J' + (k + 2) + '-$K' + (k + 2) + ')']);
+  }
+  sh.getRange(2, C.LEFT, f.length, 1).setFormulas(f);
+}
+
+/* 지난 예약 이용완료 처리 */
+function completePastBookings() {
+  try {
+    var sh = sheetOf(SH.DATA);
+    var last = sh.getLastRow();
+    if (last < 2) { alert('예약 데이터가 없습니다.'); return; }
+    var rows = sh.getRange(2, 1, last - 1, D_HEAD.length).getValues();
+    var today = toDate(ymd(new Date()));
+    var n = 0;
+    for (var i = 0; i < rows.length; i++) {
+      var st = rows[i][D.STATUS - 1];
+      var dt = toDate(rows[i][D.DATE - 1]);
+      if (st === STATUS.OK && dt && dt < today) {
+        sh.getRange(i + 2, D.STATUS).setValue(STATUS.DONE);
+        n++;
+      }
+    }
+    recomputeCustomerStats();
+    refreshHome();
+    alert(n + '건을 "이용완료"로 바꿨습니다.\n\n' +
+      '· 회차 사용횟수가 1씩 올라갔습니다.\n' +
+      '· 실제 받은 금액이 다르면 [네이버예약_데이터]의 "실결제금액"을 고쳐주세요.');
+  } catch (e) { logError('이용완료 처리', e); alert('문제가 생겼습니다: ' + e.message); }
+}
+
+/* ---------- 고객프로필 화면 ---------- */
+
+function refreshProfile() {
+  try {
+    var sh = sheetOf(SH.PROFILE);
+    var term = String(sh.getRange('B3').getValue()).trim();
+    var rows = readCustomers();
+    var cands = rows.filter(function (r) {
+      if (!term) return false;
+      var nm = String(r[C.NAME - 1]);
+      return nm.indexOf(term) >= 0 ||
+             last4(r[C.PHONE - 1]) === term ||
+             last4(r[C.SAFE - 1]) === term ||
+             String(r[C.ID - 1]) === term;
+    });
+    var labels = cands.map(function (r) {
+      return r[C.NAME - 1] + ' / ' + (last4(r[C.PHONE - 1]) || last4(r[C.SAFE - 1]) || '번호없음') + ' / ' + r[C.ID - 1];
+    });
+    // 후보 목록 Z열에 기록 + 드롭다운
+    var zRows = Math.max(sh.getMaxRows() - 1, 1);
+    sh.getRange(2, 26, zRows, 1).clearContent();
+    if (labels.length) {
+      sh.getRange(2, 26, labels.length, 1).setValues(labels.map(function (l) { return [l]; }));
+      sh.getRange('B4').setDataValidation(
+        SpreadsheetApp.newDataValidation()
+          .requireValueInRange(sh.getRange(2, 26, labels.length, 1), true)
+          .setAllowInvalid(true).build());
+      if (labels.length === 1) sh.getRange('B4').setValue(labels[0]);
+    } else {
+      sh.getRange('B4').clearDataValidations();
+    }
+    renderProfile();
+  } catch (e) { logError('고객프로필 새로고침', e); }
+}
+
+function renderProfile() {
+  var sh = sheetOf(SH.PROFILE);
+  var pr = profileRows();
+  var sel = String(sh.getRange('B4').getValue()).trim();
+
+  // 이전 내용 지우기
+  sh.getRange(pr.info, 2, 6, 1).clearContent();
+  sh.getRange(pr.info, 4, 5, 1).clearContent();
+  var clearRows = Math.max(sh.getMaxRows() - pr.hist + 1, 1);
+  sh.getRange(pr.hist, 1, clearRows, 8).clearContent();
+
+  if (!sel) return;
+  var id = sel.split('/').pop().trim();
+  var rows = readCustomers();
+  var cust = null, custRow = -1;
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i][C.ID - 1]).trim() === id) { cust = rows[i]; custRow = i + 2; break; }
+  }
+  if (!cust) return;
+
+  var left = cust[C.LEFT - 1] === '' ? '-' : cust[C.LEFT - 1];
+  var total = cust[C.TOTAL - 1] === '' ? '-' : cust[C.TOTAL - 1];
+  var vals1 = [
+    [cust[C.NAME - 1]],
+    [cust[C.SHOP - 1]],
+    [cust[C.VISITS - 1]],
+    [cust[C.PRODUCT - 1]],
+    [cust[C.NEXT - 1] ? ymd(cust[C.NEXT - 1]) : '없음'],
+    [cust[C.MEMO - 1]]
+  ];
+  var vals2 = [
+    [cust[C.PHONE - 1] || '⚠︎ 미입력'],
+    [cust[C.SAFE - 1] || '-'],
+    [cust[C.LAST - 1] ? ymd(cust[C.LAST - 1]) : '-'],
+    [left + ' / ' + total],
+    [cust[C.FOLDER - 1] || '(메뉴 → 사진폴더 만들기)']
+  ];
+  sh.getRange(pr.info, 2, 6, 1).setValues(vals1);
+  sh.getRange(pr.info, 4, 5, 1).setValues(vals2);
+
+  // 방문 히스토리
+  var hist = readData().filter(function (x) { return String(x[D.CUSTID - 1]).trim() === id; })
+    .sort(function (a, b) { return (toDate(b[D.DATE - 1]) || 0) - (toDate(a[D.DATE - 1]) || 0); });
+  if (!hist.length) return;
+  var out = hist.map(function (x) {
+    return [ymd(x[D.DATE - 1]) + ' ' + (x[D.TIME - 1] || ''),
+            x[D.SHOP - 1], x[D.PRODUCT - 1], x[D.OPTION - 1],
+            x[D.PAID - 1] || x[D.AMOUNT - 1] || '', x[D.STAFF - 1], x[D.STATUS - 1], ''];
+  });
+  sh.getRange(pr.hist, 1, out.length, 8).setValues(out);
+  sh.getRange(pr.hist, 5, out.length, 1).setNumberFormat('#,##0');
+  // 사진 폴더 링크
+  var folder = cust[C.FOLDER - 1];
+  if (folder) {
+    sh.getRange(pr.hist, 8, out.length, 1)
+      .setFormula('=HYPERLINK("' + folder + '","📷 사진 폴더 열기")');
+  }
+}
+
+/* ---------- 드라이브 사진 폴더 ---------- */
+
+function ensureDriveRoot() {
+  var id = cfgStr('사진 루트폴더ID', '');
+  if (id) { try { DriveApp.getFolderById(id); return id; } catch (e) {} }
+  var f = DriveApp.createFolder('뷰티샵CRM_고객사진');
+  setCfg('사진 루트폴더ID', f.getId());
+  return f.getId();
+}
+
+function createFolderForSelectedCustomer() {
+  try {
+    var sh = ss().getActiveSheet();
+    var id = '';
+    if (sh.getName() === SH.PROFILE) {
+      var sel = String(sh.getRange('B4').getValue()).trim();
+      id = sel ? sel.split('/').pop().trim() : '';
+    } else if (sh.getName() === SH.CUST) {
+      var r = sh.getActiveRange().getRow();
+      if (r > 1) id = String(sh.getRange(r, C.ID).getValue()).trim();
+    }
+    if (!id) { alert('[고객DB] 탭에서 고객 행을 클릭하거나, [고객프로필]에서 고객을 고른 뒤 실행해 주세요.'); return; }
+    var url = ensureCustomerFolder(id);
+    alert('사진 폴더를 만들었습니다.\n\n' + url +
+      '\n\n구글 드라이브 앱에서 이 폴더에 before / after 사진을 올리면 됩니다.');
+  } catch (e) { logError('사진폴더 생성', e); alert('문제가 생겼습니다: ' + e.message); }
+}
+
+function ensureCustomerFolder(custId) {
+  var sh = sheetOf(SH.CUST);
+  var rows = readCustomers();
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i][C.ID - 1]).trim() === custId) {
+      if (rows[i][C.FOLDER - 1]) return rows[i][C.FOLDER - 1];
+      var root = DriveApp.getFolderById(ensureDriveRoot());
+      var fname = custId + '_' + rows[i][C.NAME - 1] + '_' + (last4(rows[i][C.PHONE - 1]) || last4(rows[i][C.SAFE - 1]) || '');
+      var folder = root.createFolder(fname);
+      var url = folder.getUrl();
+      sh.getRange(i + 2, C.FOLDER).setValue(url);
+      return url;
+    }
+  }
+  throw new Error('고객을 찾지 못했습니다: ' + custId);
+}
+
+/* =========================================================
+ *  4. 네이버 예약메일 자동 수집
+ * ========================================================= */
+
+function htmlToText(html) {
+  if (!html) return '';
+  var t = String(html);
+  t = t.replace(/<style[\s\S]*?<\/style>/gi, ' ')
+       .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+       .replace(/<br\s*\/?>/gi, '\n')
+       .replace(/<\/(td|th|p|div|tr|li|h[1-6])>/gi, '\n')
+       .replace(/<[^>]+>/g, ' ');
+  t = t.replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<')
+       .replace(/&gt;/gi, '>').replace(/&quot;/gi, '"').replace(/&#39;/gi, "'")
+       .replace(/&[a-z]+;/gi, ' ');
+  t = t.replace(/[ \t ]+/g, ' ')
+       .replace(/\n\s*\n\s*\n+/g, '\n\n')
+       .replace(/ *\n */g, '\n');
+  return t.trim();
+}
+
+function mailText(msg) {
+  var a = '';
+  try { a = msg.getPlainBody() || ''; } catch (e) {}
+  var b = '';
+  try { b = htmlToText(msg.getBody() || ''); } catch (e) {}
+  // 둘 다 붙여서 검색 (레이블-값이 어느 쪽에 붙어있든 잡히게)
+  return (htmlToText(a) + '\n\n' + b).trim();
+}
+
+function pick(text, cfgKey) {
+  var pat = cfgStr(cfgKey, '');
+  if (!pat) return '';
+  try {
+    var m = new RegExp(pat).exec(text);
+    return m && m[1] ? String(m[1]).trim() : '';
+  } catch (e) { return ''; }
+}
+
+function testRe(text, cfgKey) {
+  var pat = cfgStr(cfgKey, '');
+  if (!pat) return false;
+  try { return new RegExp(pat).test(text); } catch (e) { return false; }
+}
+
+/* '2026.08.27.(목) 오후 1:00' → {date, time} */
+function parseKoreanDateTime(s) {
+  var t = String(s || '').replace(/\s+/g, ' ').trim();
+  var dm = t.match(/(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/);
+  if (!dm) return null;
+  var date = new Date(Number(dm[1]), Number(dm[2]) - 1, Number(dm[3]));
+  var rest = t.slice(dm.index + dm[0].length);
+  var time = normTime(rest) || normTime(t);
+  return { date: date, time: time || '' };
+}
+
+function detectShop(text) {
+  var list = shops();
+  for (var i = 0; i < list.length; i++) {
+    for (var k = 0; k < list[i].keywords.length; k++) {
+      if (list[i].keywords[k] && text.indexOf(list[i].keywords[k]) >= 0) return list[i];
+    }
+  }
+  return null;
+}
+
+function detectStatus(subject, body) {
+  // 제목으로 판단하는 것이 가장 정확합니다. 제목이 비어있을 때만 본문 앞부분을 봅니다.
+  var s = String(subject || '').trim();
+  if (!s) s = String(body || '').slice(0, 300);
+  if (testRe(s, '규칙_제목_취소')) return STATUS.CANCEL;
+  if (testRe(s, '규칙_제목_변경')) return STATUS.CHANGE;
+  if (testRe(s, '규칙_제목_확정')) return STATUS.OK;
+  return STATUS.OK;
+}
+
+/* ---------- 요청사항 칸에서 실명·연락처 뽑기 ----------
+   네이버는 예약자명을 '박*정'처럼 가려서 보내지만,
+   고객이 직접 적은 '요청사항'은 가리지 않고 그대로 보냅니다.
+   예: "박현정 01093156704"                                   */
+
+function nameMatchesMask(real, mask) {
+  real = String(real || '').trim();
+  mask = String(mask || '').trim();
+  if (!real || !mask) return false;
+  if (real.length !== mask.length) return false;
+  for (var i = 0; i < mask.length; i++) {
+    var mc = mask.charAt(i);
+    if (mc === '*') continue;
+    if (mc !== real.charAt(i)) return false;
+  }
+  return true;
+}
+
+/* "성함", "연락처" 같은 안내 문구는 이름 후보에서 빼줍니다 */
+function stripLabels(s) {
+  return String(s || '').replace(
+    /(예약자명|예약자|고객명|성함은|성함|성명|이름은|이름|연락처는|연락처|전화번호|휴대폰번호|휴대폰|핸드폰|전화|번호)/g, ' ');
+}
+
+function extractFromRequest(request, maskedName) {
+  var out = { phone: '', name: '' };
+  var t = String(request || '').trim();
+  if (!t || t === '-') return out;
+
+  // 휴대폰 번호 (하이픈·공백·점 허용)
+  var pm = t.match(/(01[016789][\s\-.]?\d{3,4}[\s\-.]?\d{4})/);
+  if (!pm) pm = t.match(/(050\d[\s\-.]?\d{3,4}[\s\-.]?\d{4})/);
+  if (pm) out.phone = normPhone(pm[1]);
+
+  var body = pm ? t.replace(pm[1], ' ') : t;
+  var clean = stripLabels(body);
+
+  // 실명: 가려진 이름(박*정)과 글자 수·보이는 글자가 맞는 한글 덩어리
+  var names = (clean.match(/[가-힣]{2,5}/g) || []).concat(t.match(/[가-힣]{2,5}/g) || []);
+  var ml = String(maskedName || '').trim().length;
+  for (var i = 0; i < names.length; i++) {
+    var c = names[i];
+    if (nameMatchesMask(c, maskedName)) { out.name = c; break; }
+    // "최수진이고"처럼 조사가 붙은 경우, 앞쪽 글자만 떼서 다시 맞춰봅니다
+    if (ml && c.length > ml && nameMatchesMask(c.substring(0, ml), maskedName)) {
+      out.name = c.substring(0, ml); break;
+    }
+  }
+  // 가려진 이름과 못 맞췄지만 남은 한글 덩어리가 하나뿐이면 그걸 이름으로 씁니다
+  if (!out.name && pm) {
+    var only = clean.match(/[가-힣]{2,5}/g) || [];
+    if (only.length === 1) out.name = only[0];
+  }
+  return out;
+}
+
+function parseBookingMail(msg) {
+  var subject = '';
+  try { subject = msg.getSubject() || ''; } catch (e) {}
+  var body = mailText(msg);
+  var all = subject + '\n' + body;
+
+  var res = {
+    ok: true, reason: '',
+    subject: subject,
+    mailId: msg.getId(),
+    mailAt: msg.getDate(),
+    shop: null,
+    status: detectStatus(subject, body),
+    resno: pick(body, '규칙_예약번호') || pick(all, '규칙_예약번호'),
+    name: '',
+    phone: '',
+    safe: '',
+    date: null, time: '',
+    product: pick(body, '규칙_예약상품'),
+    option: pick(body, '규칙_선택메뉴'),
+    people: '',
+    request: pick(body, '규칙_요청사항'),
+    amount: ''
+  };
+
+  res.shop = detectShop(all);
+
+  var nm = pick(body, '규칙_예약자명');
+  nm = nm.replace(/님\s*$/, '').replace(/\s*\|.*$/, '').trim();
+  res.name = nm;
+
+  var ph = pick(body, '규칙_연락처');
+  if (ph) {
+    ph = normPhone(ph);
+    if (isSafePhone(ph)) res.safe = ph; else res.phone = ph;
+  }
+
+  var dtRaw = pick(body, '규칙_이용일시');
+  var dt = parseKoreanDateTime(dtRaw);
+  if (dt) { res.date = dt.date; res.time = dt.time; }
+
+  if (res.option) {
+    var pm = res.option.match(/(\d+)\s*인/);
+    if (pm) res.people = Number(pm[1]);
+    var money = res.option.match(/([0-9][0-9,]*)\s*원\s*$/);
+    if (!money) {
+      var ms = res.option.match(/([0-9][0-9,]*)\s*원/g);
+      if (ms && ms.length) money = ms[ms.length - 1].match(/([0-9][0-9,]*)/);
+    }
+    if (money) res.amount = Number(String(money[1]).replace(/,/g, ''));
+  }
+  if (res.request === '-' ) res.request = '';
+
+  // 요청사항에 고객이 적어둔 실명·연락처가 있으면 끌어올립니다
+  var ex = extractFromRequest(res.request, res.name);
+  if (ex.phone && !res.phone && !res.safe) {
+    if (isSafePhone(ex.phone)) res.safe = ex.phone; else res.phone = ex.phone;
+  }
+  if (ex.name) { res.maskedName = res.name; res.name = ex.name; }
+
+  if (!res.resno) { res.ok = false; res.reason = '예약번호를 찾지 못함'; }
+  else if (!res.shop) { res.ok = false; res.reason = '어느 샵인지 구분 못함'; }
+  else if (!res.date && res.status !== STATUS.CANCEL) { res.ok = false; res.reason = '이용일시를 찾지 못함'; }
+  else if (!res.name) { res.ok = false; res.reason = '예약자명을 찾지 못함'; }
+  return res;
+}
+
+/* ---------- 메일 처리 본체 ---------- */
+
+function checkMailNow() {
+  var n = processBookingMails();
+  refreshHome();
+  alert(n.total === 0
+    ? '새로 처리할 예약 메일이 없습니다.\n\n' +
+      '· 메일이 지메일로 오고 있는지 확인해 주세요.\n' +
+      '· [설정] 탭의 "메일 검색조건"을  newer_than:7d  로 늘려서 다시 시도해 보세요.'
+    : '메일 ' + n.total + '통을 처리했습니다.\n\n' +
+      '· 새 예약 ' + n.created + '건\n· 변경 ' + n.updated + '건\n· 취소 ' + n.canceled +
+      '건\n· 확인필요 ' + n.failed + '건');
+}
+
+function processBookingMails() {
+  var stat = { total: 0, created: 0, updated: 0, canceled: 0, failed: 0 };
+  try { autoSettle(); } catch (e) { logError('자동 정산', e); }
+  try {
+    if (!cfgOn('메일 자동수집 사용')) return stat;
+    var labelName = cfgStr('처리완료 라벨', 'CRM처리완료');
+    var label = GmailApp.getUserLabelByName(labelName) || GmailApp.createLabel(labelName);
+    var query = cfgStr('메일 검색조건', 'subject:"네이버 예약" newer_than:3d') + ' -label:' + labelName;
+    var maxN = Number(cfg('한 번에 처리할 메일 수', 20)) || 20;
+
+    var threads = GmailApp.search(query, 0, maxN);
+    if (!threads.length) { setCfg('마지막 메일확인 시각', nowStr()); return stat; }
+
+    var dataSh = sheetOf(SH.DATA);
+    var seenMailIds = {};
+    var idx = buildResnoIndex();
+    var last = dataSh.getLastRow();
+    if (last > 1) {
+      dataSh.getRange(2, D.MAILID, last - 1, 1).getValues().forEach(function (r) {
+        if (r[0]) seenMailIds[r[0]] = true;
+      });
+    }
+
+    var touched = {};   // 'shop|yyyy-MM-dd' → true
+    var newlyConfirmed = [];
+
+    // 한 번에 여러 통이 들어올 때, 메일이 온 순서(오래된 것 → 최신)대로 처리해야
+    // "확정 → 취소"가 뒤집혀서 취소가 사라지는 일이 없습니다.
+    var pending = [];
+    threads.forEach(function (th) {
+      th.getMessages().forEach(function (msg) {
+        if (!seenMailIds[msg.getId()]) pending.push(msg);
+      });
+    });
+    pending.sort(function (a, b) { return a.getDate().getTime() - b.getDate().getTime(); });
+
+    pending.forEach(function (msg) {
+      {
+        stat.total++;
+        var p;
+        try { p = parseBookingMail(msg); }
+        catch (err) { p = { ok: false, reason: '읽기 오류: ' + err.message, mailId: msg.getId(), mailAt: msg.getDate(), subject: '' }; }
+
+        if (!p.ok) {
+          stat.failed++;
+          var bad = newDataRow();
+          bad[D.RESNO - 1]  = p.resno || ('X' + fmt(new Date(), 'yyMMddHHmmss'));
+          bad[D.SHOP - 1]   = p.shop ? p.shop.name : '';
+          bad[D.STATUS - 1] = STATUS.CHECK;
+          bad[D.NAME - 1]   = p.name || '';
+          bad[D.DATE - 1]   = p.date || '';
+          bad[D.TIME - 1]   = p.time || '';
+          bad[D.PRODUCT - 1]= p.product || '';
+          bad[D.SOURCE - 1] = '네이버자동';
+          bad[D.MAILAT - 1] = p.mailAt ? fmt(p.mailAt, 'yyyy-MM-dd HH:mm:ss') : '';
+          bad[D.PROCAT - 1] = nowStr();
+          bad[D.MAILID - 1] = p.mailId;
+          bad[D.MEMO - 1]   = '자동읽기 실패(' + p.reason + ') / 제목: ' + (p.subject || '');
+          dataSh.appendRow(bad);
+          notifyAdmin('예약메일을 자동으로 읽지 못했습니다',
+            '메일 제목: ' + (p.subject || '(없음)') + '\n이유: ' + p.reason +
+            '\n\n[네이버예약_데이터] 탭 맨 아래에 "확인필요" 상태로 넣어두었습니다.\n' +
+            '그 줄의 빈칸(예약자명·날짜·시간·상품)을 직접 채우고 상태를 "확정"으로 바꿔주세요.');
+          return;
+        }
+
+        var key = String(p.resno);
+        var row = idx[key];
+
+        if (p.status === STATUS.CANCEL) {
+          if (row) {
+            dataSh.getRange(row.r, D.STATUS).setValue(STATUS.CANCEL);
+            dataSh.getRange(row.r, D.MAILID).setValue(p.mailId);
+            dataSh.getRange(row.r, D.PROCAT).setValue(nowStr());
+            deleteGCalEvent(row.shop, dataSh.getRange(row.r, D.CALID).getValue());
+            dataSh.getRange(row.r, D.CALID).setValue('');
+            touched[row.shop + '|' + row.date] = true;
+            stat.canceled++;
+          } else {
+            var cr = fillRow(newDataRow(), p);
+            cr[D.STATUS - 1] = STATUS.CANCEL;
+            dataSh.appendRow(cr);
+            idx[key] = { r: dataSh.getLastRow(), shop: p.shop.name, date: ymd(p.date) };
+            stat.canceled++;
+          }
+        } else if (row) {
+          // 이미 취소 처리된 예약은, 그보다 먼저 온 확정 메일로 되살리지 않습니다
+          var curStatus = String(dataSh.getRange(row.r, D.STATUS).getValue()).trim();
+          var curStamp = parseStamp(dataSh.getRange(row.r, D.MAILAT).getValue());
+          if (curStatus === STATUS.CANCEL && curStamp &&
+              p.mailAt && curStamp > p.mailAt.getTime()) {
+            seenMailIds[msg.getId()] = true;
+            return;
+          }
+          // 변경 / 재확정
+          var vals = fillRow(newDataRow(), p);
+          var oldDate = row.date;
+          [D.SHOP, D.NAME, D.DATE, D.TIME, D.PRODUCT, D.OPTION, D.PEOPLE, D.REQUEST, D.AMOUNT].forEach(function (col) {
+            if (vals[col - 1] !== '' && vals[col - 1] !== null) dataSh.getRange(row.r, col).setValue(vals[col - 1]);
+          });
+          if (p.phone) dataSh.getRange(row.r, D.PHONE).setValue(p.phone);
+          if (p.safe)  dataSh.getRange(row.r, D.SAFE).setValue(p.safe);
+          dataSh.getRange(row.r, D.STATUS).setValue(STATUS.OK);
+          dataSh.getRange(row.r, D.MAILID).setValue(p.mailId);
+          dataSh.getRange(row.r, D.PROCAT).setValue(nowStr());
+          upsertGCalEvent(dataSh, row.r);
+          touched[p.shop.name + '|' + oldDate] = true;
+          touched[p.shop.name + '|' + ymd(p.date)] = true;
+          stat.updated++;
+        } else {
+          var nr = fillRow(newDataRow(), p);
+          nr[D.CUSTID - 1] = matchOrCreateCustomer(p.name, p.phone, p.safe, p.shop.name, '네이버자동');
+          dataSh.appendRow(nr);
+          var newR = dataSh.getLastRow();
+          idx[key] = { r: newR, shop: p.shop.name, date: ymd(p.date) };
+          upsertGCalEvent(dataSh, newR);
+          touched[p.shop.name + '|' + ymd(p.date)] = true;
+          newlyConfirmed.push(newR);
+          stat.created++;
+        }
+        seenMailIds[msg.getId()] = true;
+      }
+    });
+    threads.forEach(function (th) { try { th.addLabel(label); } catch (e) {} });
+
+    // 캘린더 갱신
+    Object.keys(touched).forEach(function (k) {
+      var parts = k.split('|');
+      if (parts[1]) syncCalendarForBooking(parts[0], parts[1]);
+    });
+
+    if (stat.created || stat.updated) {
+      recomputeCustomerStats();
+    }
+    // 예약확정 즉시 안내
+    if (cfgOn('확정 즉시 안내 사용') && newlyConfirmed.length) {
+      newlyConfirmed.forEach(function (r) {
+        try { sendForRow(dataSh, r, '확정'); } catch (e) { Logger.log(e); }
+      });
+    }
+    setCfg('마지막 메일확인 시각', nowStr());
+  } catch (e) {
+    logError('예약메일 처리', e);
+  }
+  return stat;
+}
+
+function fillRow(row, p) {
+  row[D.RESNO - 1]   = String(p.resno);
+  row[D.SHOP - 1]    = p.shop ? p.shop.name : '';
+  row[D.STATUS - 1]  = p.status;
+  row[D.NAME - 1]    = p.name;
+  row[D.PHONE - 1]   = p.phone || '';
+  row[D.SAFE - 1]    = p.safe || '';
+  row[D.DATE - 1]    = p.date || '';
+  row[D.TIME - 1]    = p.time || '';
+  row[D.PRODUCT - 1] = p.product || '';
+  row[D.OPTION - 1]  = p.option || '';
+  row[D.PEOPLE - 1]  = p.people || '';
+  row[D.REQUEST - 1] = p.request || '';
+  row[D.AMOUNT - 1]  = p.amount || '';
+  row[D.PAID - 1]    = '';   // 매출은 시술 후 [결제 등록]으로 직접 넣습니다
+  row[D.SOURCE - 1]  = '네이버자동';
+  row[D.MAILAT - 1]  = p.mailAt ? fmt(p.mailAt, 'yyyy-MM-dd HH:mm:ss') : '';
+  row[D.PROCAT - 1]  = nowStr();
+  row[D.MAILID - 1]  = p.mailId || '';
+  if (p.maskedName && p.maskedName !== p.name) {
+    row[D.MEMO - 1] = '네이버 표기: ' + p.maskedName;
+  }
+  return row;
+}
+
+function buildResnoIndex() {
+  var sh = sheetOf(SH.DATA);
+  var last = sh.getLastRow();
+  var idx = {};
+  if (last < 2) return idx;
+  var v = sh.getRange(2, 1, last - 1, D_HEAD.length).getValues();
+  for (var i = 0; i < v.length; i++) {
+    var k = String(v[i][D.RESNO - 1]).trim();
+    if (k) idx[k] = { r: i + 2, shop: v[i][D.SHOP - 1], date: ymd(v[i][D.DATE - 1]) };
+  }
+  return idx;
+}
+
+/* =========================================================
+ *  5. 구글캘린더 연동
+ * ========================================================= */
+
+function ensureGoogleCalendars() {
+  shops().forEach(function (s) {
+    var id = cfgStr(s.calIdKey, '');
+    if (id) { try { if (CalendarApp.getCalendarById(id)) return; } catch (e) {} }
+    var found = CalendarApp.getCalendarsByName(s.name + ' 예약');
+    var cal = (found && found.length) ? found[0] : CalendarApp.createCalendar(s.name + ' 예약', {
+      summary: s.name + ' 네이버 예약 자동연동',
+      color: s.idx === 1 ? CalendarApp.Color.PINK : CalendarApp.Color.BLUE
+    });
+    setCfg(s.calIdKey, cal.getId());
+  });
+}
+
+function calFor(shopName) {
+  var s = shopByName(shopName);
+  if (!s) return null;
+  var id = cfgStr(s.calIdKey, '');
+  if (!id) return null;
+  try { return CalendarApp.getCalendarById(id); } catch (e) { return null; }
+}
+
+function upsertGCalEvent(dataSh, r) {
+  try {
+    var v = dataSh.getRange(r, 1, 1, D_HEAD.length).getValues()[0];
+    if (v[D.STATUS - 1] === STATUS.CANCEL) return;
+    var cal = calFor(v[D.SHOP - 1]);
+    if (!cal) return;
+    var d = toDate(v[D.DATE - 1]);
+    var t = normTime(v[D.TIME - 1]) || '10:00';
+    if (!d) return;
+    var hhmm = t.split(':');
+    var start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), Number(hhmm[0]), Number(hhmm[1]));
+    var mins = Number(cfg('예약 기본 소요시간(분)', 90)) || 90;
+    var end = new Date(start.getTime() + mins * 60000);
+    var title = [v[D.NAME - 1], v[D.PRODUCT - 1], v[D.OPTION - 1]].filter(function (x) { return x; }).join(' / ');
+    var desc = '예약번호: ' + v[D.RESNO - 1] +
+      '\n연락처: ' + (v[D.PHONE - 1] || v[D.SAFE - 1] || '미확인') +
+      '\n인원: ' + (v[D.PEOPLE - 1] || '') +
+      '\n요청사항: ' + (v[D.REQUEST - 1] || '') +
+      '\n담당자: ' + (v[D.STAFF - 1] || '');
+    var evId = v[D.CALID - 1];
+    var ev = null;
+    if (evId) { try { ev = cal.getEventById(evId); } catch (e) { ev = null; } }
+    if (ev) {
+      ev.setTitle(title);
+      ev.setTime(start, end);
+      ev.setDescription(desc);
+    } else {
+      ev = cal.createEvent(title, start, end, { description: desc });
+      dataSh.getRange(r, D.CALID).setValue(ev.getId());
+    }
+  } catch (e) { Logger.log('구글캘린더 등록 실패: ' + e); }
+}
+
+function deleteGCalEvent(shopName, eventId) {
+  if (!eventId) return;
+  try {
+    var cal = calFor(shopName);
+    if (!cal) return;
+    var ev = cal.getEventById(eventId);
+    if (ev) ev.deleteEvent();
+  } catch (e) { Logger.log('구글캘린더 삭제 실패: ' + e); }
+}
+
+/* =========================================================
+ *  6. 알림톡 / 문자 발송 (알리고)
+ * ========================================================= */
+
+var ALIGO_SMS   = 'https://apis.aligo.in/send/';
+var ALIGO_TOKEN = 'https://kakaoapi.aligo.in/akv10/token/create/30/s/';
+var ALIGO_ATALK = 'https://kakaoapi.aligo.in/akv10/alimtalk/send/';
+
+function aligoReady() {
+  return !!(cfgStr('알리고 사용자ID', '') && cfgStr('알리고 API키', '') && cfgStr('발신번호', ''));
+}
+
+/* 문자에 쓸 호칭 정하기: 고객DB의 실명 > 마스킹 안 된 이름 > '고객' */
+function displayName(rawName, custId) {
+  var nm = String(rawName || '').trim();
+  if (custId) {
+    try {
+      var rows = readCustomers();
+      for (var i = 0; i < rows.length; i++) {
+        if (String(rows[i][C.ID - 1]).trim() === String(custId).trim()) {
+          var cn = String(rows[i][C.NAME - 1] || '').trim();
+          if (cn && cn.indexOf('*') < 0) return cn;
+          break;
+        }
+      }
+    } catch (e) {}
+  }
+  if (!nm || nm.indexOf('*') >= 0) return '고객';
+  return nm;
+}
+
+function shopNo(name) {
+  var list = shops();
+  for (var i = 0; i < list.length; i++) if (list[i].name === name) return list[i].idx;
+  return 1;
+}
+
+/* 90 -> "1시간 30분" */
+function minText(m) {
+  m = Number(m) || 0;
+  var h = Math.floor(m / 60), r = m % 60;
+  var s = (h ? h + '시간' : '') + (h && r ? ' ' : '') + (r ? r + '분' : '');
+  return s || '0분';
+}
+
+/* 예약의 선택메뉴·예약상품을 시술메뉴와 맞춰 실제 소요시간을 찾습니다 */
+function bookingMinutes(v) {
+  var nosp = function (x) { return String(x || '').replace(/\s+/g, ''); };
+  var hay = nosp(String(v[D.OPTION - 1] || '') + '|' + String(v[D.PRODUCT - 1] || ''));
+  var shop = String(v[D.SHOP - 1] || '');
+  var best = 0, bestLen = 0;
+  try {
+    readMenu().forEach(function (m) {
+      if (m.shop && m.shop !== shop) return;
+      if (!m.min || !m.name) return;
+      var key = nosp(m.name);
+      if (key && hay.indexOf(key) >= 0 && key.length > bestLen) {
+        bestLen = key.length; best = m.min;
+      }
+    });
+  } catch (e) {}
+  if (best) return best;
+  return Number(String(cfgStr('예약 기본 소요시간(분)', '90')).replace(/[^0-9]/g, '')) || 90;
+}
+
+/* 2026-08-31 -> "2026년 8월 31일(월)" */
+function dayText(dateVal) {
+  var dt = toDate(dateVal);
+  if (!dt) return ymd(dateVal);
+  return fmt(dt, 'yyyy년 M월 d일') + '(' + ['일', '월', '화', '수', '목', '금', '토'][dt.getDay()] + ')';
+}
+
+/* 13:00 -> "오후 1시",  13:30 -> "오후 1시 30분" */
+function clockText(timeVal) {
+  var m = String(timeVal || '').trim().match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return String(timeVal || '');
+  var H = Number(m[1]), M = Number(m[2]);
+  var ap = H < 12 ? '오전' : '오후';
+  var h12 = H % 12; if (h12 === 0) h12 = 12;
+  return ap + ' ' + h12 + '시' + (M ? ' ' + M + '분' : '');
+}
+
+/* 2026-08-31 + 13:00 -> "2026년 8월 31일(월) 오후 1:00" */
+function whenText(dateVal, timeVal) {
+  var dt = toDate(dateVal);
+  var t = String(timeVal || '').trim();
+  if (!dt) return (ymd(dateVal) + ' ' + t).trim();
+  var s = fmt(dt, 'yyyy년 M월 d일') + '(' + ['일', '월', '화', '수', '목', '금', '토'][dt.getDay()] + ')';
+  var m = t.match(/^(\d{1,2}):(\d{2})/);
+  if (m) {
+    var H = Number(m[1]);
+    var ap = H < 12 ? '오전' : '오후';
+    var h12 = H % 12; if (h12 === 0) h12 = 12;
+    s += ' ' + ap + ' ' + h12 + ':' + m[2];
+  }
+  return s;
+}
+
+function buildMessage(v, type) {
+  var base = { '사전': '문구_사전', '전일': '문구_전일', '당일': '문구_당일', '확정': '문구_확정', '개별': '문구_확정' }[type] || '문구_확정';
+  var shop = v[D.SHOP - 1] || '';
+  var tpl = String(cfgStr('샵' + shopNo(shop) + ' ' + base, '')).trim();   // 샵 전용 문구가 있으면 그것부터
+  if (!tpl) tpl = String(cfgStr(base, '')).trim();
+  if (!tpl) tpl = '[#{샵}] #{이름}님, #{날짜} #{시간} 예약 안내드립니다.';
+  var name = v[D.NAME - 1] || '고객';
+  var time = timeStr(v[D.TIME - 1]);
+  return tpl
+    .replace(/#\{샵\}/g, shop)
+    .replace(/#\{상점명\}/g, shop)
+    .replace(/#\{이름\}/g, name)
+    .replace(/#\{고객명\}/g, name)
+    .replace(/#\{날짜\}/g, ymd(v[D.DATE - 1]))
+    .replace(/#\{시간\}/g, time)
+    .replace(/#\{예약일시\}/g, whenText(v[D.DATE - 1], time))
+    .replace(/#\{날짜요일\}/g, dayText(v[D.DATE - 1]))
+    .replace(/#\{시각\}/g, clockText(time))
+    .replace(/#\{소요시간\}/g, minText(bookingMinutes(v)))
+    .replace(/#\{상품\}/g, v[D.PRODUCT - 1] || '')
+    .replace(/#\{옵션\}/g, v[D.OPTION - 1] || '');
+}
+
+function alreadySent(resno, type) {
+  var sh = sheetOf(SH.LOG);
+  var last = sh.getLastRow();
+  if (last < 2) return false;
+  var v = sh.getRange(2, 2, last - 1, 7).getValues(); // B~H: 예약번호,샵,고객명,연락처,유형,채널,결과
+  for (var i = 0; i < v.length; i++) {
+    if (String(v[i][0]) === String(resno) && String(v[i][4]) === type &&
+        String(v[i][6]).indexOf('성공') === 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function logSend(v, type, channel, result, message, resp) {
+  sheetOf(SH.LOG).appendRow([
+    nowStr(), v[D.RESNO - 1], v[D.SHOP - 1], v[D.NAME - 1],
+    v[D.PHONE - 1] || v[D.SAFE - 1] || '', type, channel, result,
+    message, typeof resp === 'string' ? resp.slice(0, 300) : JSON.stringify(resp).slice(0, 300)
+  ]);
+}
+
+/* 예약 1행 발송 */
+function sendForRow(dataSh, r, type, force) {
+  var v = dataSh.getRange(r, 1, 1, D_HEAD.length).getValues()[0];
+  if (v[D.STATUS - 1] === STATUS.CANCEL) return { ok: false, reason: '취소된 예약' };
+  var shop = shopByName(v[D.SHOP - 1]);
+  if (shop && !cfgOn(shop.sendKey)) return { ok: false, reason: '이 샵은 발송 꺼짐' };
+  var to = v[D.PHONE - 1] || v[D.SAFE - 1];
+  if (!to) {
+    logSend(v, type, '-', '실패', '', '연락처 없음');
+    return { ok: false, reason: '연락처 없음' };
+  }
+  if (!force && alreadySent(v[D.RESNO - 1], type)) return { ok: false, reason: '이미 발송함' };
+
+  // 네이버 메일의 이름은 '박*정'처럼 가려져 있습니다.
+  // 고객DB에 실명을 적어두었으면 그 이름을, 아니면 '고객'으로 부릅니다.
+  v[D.NAME - 1] = displayName(v[D.NAME - 1], v[D.CUSTID - 1]);
+
+  var msg = buildMessage(v, type);
+
+  if (cfgOn('테스트 모드')) {
+    logSend(v, type, '테스트', '성공(테스트)', msg, '테스트 모드라 실제로 보내지 않았습니다');
+    return { ok: true, test: true };
+  }
+  if (!aligoReady()) {
+    logSend(v, type, '-', '실패', msg, '알리고 설정이 비어있습니다');
+    return { ok: false, reason: '알리고 미설정' };
+  }
+
+  var tplCode = cfgStr('알림톡 템플릿코드_' + type, '');
+  var senderKey = cfgStr('카카오채널 senderkey', '');
+  var res;
+  if (tplCode && senderKey) {
+    res = sendAlimtalk(to, v[D.NAME - 1], msg, tplCode, senderKey);
+    if (res.ok) { logSend(v, type, '알림톡', '성공', msg, res.raw); return { ok: true }; }
+    // 실패 → 문자 대체
+    var sres = sendSms(to, msg);
+    logSend(v, type, sres.ok ? 'SMS(대체)' : 'SMS(대체)', sres.ok ? '성공' : '실패', msg,
+      '알림톡실패:' + res.raw + ' / SMS:' + sres.raw);
+    return { ok: sres.ok, reason: sres.ok ? '' : 'SMS도 실패' };
+  }
+  res = sendSms(to, msg);
+  logSend(v, type, 'SMS', res.ok ? '성공' : '실패', msg, res.raw);
+  return { ok: res.ok, reason: res.ok ? '' : res.raw };
+}
+
+function sendSms(to, msg) {
+  try {
+    var isLms = msg.length > 45;
+    var payload = {
+      key: cfgStr('알리고 API키', ''),
+      user_id: cfgStr('알리고 사용자ID', ''),
+      sender: cfgStr('발신번호', ''),
+      receiver: onlyDigits(to),
+      msg: msg,
+      msg_type: isLms ? 'LMS' : 'SMS'
+    };
+    if (isLms) payload.title = '예약 안내';
+    var r = UrlFetchApp.fetch(ALIGO_SMS, {
+      method: 'post', payload: payload, muteHttpExceptions: true
+    });
+    var text = r.getContentText();
+    var j = {};
+    try { j = JSON.parse(text); } catch (e) {}
+    return { ok: String(j.result_code) === '1', raw: text };
+  } catch (e) {
+    return { ok: false, raw: '통신오류: ' + e.message };
+  }
+}
+
+function aligoToken() {
+  try {
+    var r = UrlFetchApp.fetch(ALIGO_TOKEN, {
+      method: 'post',
+      payload: { apikey: cfgStr('알리고 API키', ''), userid: cfgStr('알리고 사용자ID', '') },
+      muteHttpExceptions: true
+    });
+    var j = JSON.parse(r.getContentText());
+    return (j && j.token) ? j.token : '';
+  } catch (e) { return ''; }
+}
+
+function sendAlimtalk(to, name, msg, tplCode, senderKey) {
+  try {
+    var token = aligoToken();
+    if (!token) return { ok: false, raw: '알림톡 토큰 발급 실패' };
+    var payload = {
+      apikey: cfgStr('알리고 API키', ''),
+      userid: cfgStr('알리고 사용자ID', ''),
+      token: token,
+      senderkey: senderKey,
+      tpl_code: tplCode,
+      sender: onlyDigits(cfgStr('발신번호', '')),
+      receiver_1: onlyDigits(to),
+      recvname_1: name || '고객',
+      subject_1: '예약 안내',
+      message_1: msg,
+      failover: 'Y',
+      fsubject_1: '예약 안내',
+      fmessage_1: msg
+    };
+    var r = UrlFetchApp.fetch(ALIGO_ATALK, { method: 'post', payload: payload, muteHttpExceptions: true });
+    var text = r.getContentText();
+    var j = {};
+    try { j = JSON.parse(text); } catch (e) {}
+    return { ok: String(j.code) === '0', raw: text };
+  } catch (e) {
+    return { ok: false, raw: '통신오류: ' + e.message };
+  }
+}
+
+/* ---------- 일괄 발송 ---------- */
+
+function sendReminderForDate(dateObj, type) {
+  var sh = sheetOf(SH.DATA);
+  var last = sh.getLastRow();
+  if (last < 2) return { sent: 0, skip: 0 };
+  var target = ymd(dateObj);
+  var v = sh.getRange(2, 1, last - 1, D_HEAD.length).getValues();
+  var sent = 0, skip = 0;
+  for (var i = 0; i < v.length; i++) {
+    if (ymd(v[i][D.DATE - 1]) !== target) continue;
+    if (v[i][D.STATUS - 1] !== STATUS.OK) continue;
+    var res = sendForRow(sh, i + 2, type);
+    if (res.ok) sent++; else skip++;
+  }
+  return { sent: sent, skip: skip };
+}
+
+function advanceDays() {
+  var n = Math.round(Number(String(cfg('사전 알림 며칠 전', '3')).replace(/[^0-9]/g, '')) || 3);
+  return Math.min(30, Math.max(1, n));
+}
+
+function sendReminderAdvance() {
+  try {
+    if (!cfgOn('사전 알림 사용')) return;
+    var d = new Date(Date.now() + advanceDays() * 86400000);
+    sendReminderForDate(d, '사전');
+  } catch (e) { logError('사전 알림 발송', e); }
+}
+
+function sendReminderAdvanceManual() {
+  var n = advanceDays();
+  var r = sendReminderForDate(new Date(Date.now() + n * 86400000), '사전');
+  alert(n + '일 뒤 예약자 발송 결과\n\n보냄: ' + r.sent + '건\n건너뜀: ' + r.skip + '건' +
+    (cfgOn('테스트 모드') ? '\n\n※ 지금은 테스트 모드라 실제로 나가지 않았습니다.' : ''));
+}
+
+function sendReminderTomorrow() {
+  try {
+    if (!cfgOn('전일 알림 사용')) return;
+    var d = new Date(Date.now() + 86400000);
+    sendReminderForDate(d, '전일');
+  } catch (e) { logError('전일 알림 발송', e); }
+}
+
+function sendReminderToday() {
+  try {
+    if (!cfgOn('당일 알림 사용')) return;
+    sendReminderForDate(new Date(), '당일');
+  } catch (e) { logError('당일 알림 발송', e); }
+}
+
+function sendReminderTomorrowManual() {
+  var r = sendReminderForDate(new Date(Date.now() + 86400000), '전일');
+  alert('내일 예약자 발송 결과\n\n보냄: ' + r.sent + '건\n건너뜀: ' + r.skip +
+    '건 (연락처 없음·이미 발송·취소 등)\n\n자세한 내용은 [발송로그] 탭에서 볼 수 있습니다.' +
+    (cfgOn('테스트 모드') ? '\n\n※ 지금은 테스트 모드라 실제로 나가지 않았습니다.' : ''));
+}
+
+function sendReminderTodayManual() {
+  var r = sendReminderForDate(new Date(), '당일');
+  alert('오늘 예약자 발송 결과\n\n보냄: ' + r.sent + '건\n건너뜀: ' + r.skip + '건' +
+    (cfgOn('테스트 모드') ? '\n\n※ 지금은 테스트 모드라 실제로 나가지 않았습니다.' : ''));
+}
+
+/* 선택한 예약에 발송 */
+function sendToSelected() {
+  try {
+    var sh = ss().getActiveSheet();
+    var name = sh.getName();
+    var resnos = [];
+    if (name === SH.DATA) {
+      var rl = sh.getActiveRangeList() ? sh.getActiveRangeList().getRanges() : [sh.getActiveRange()];
+      rl.forEach(function (rg) {
+        for (var r = rg.getRow(); r < rg.getRow() + rg.getNumRows(); r++) {
+          if (r > 1) resnos.push(String(sh.getRange(r, D.RESNO).getValue()).trim());
+        }
+      });
+    } else if (name.indexOf(SH.CAL) === 0) {
+      var rg2 = sh.getActiveRange();
+      for (var rr = rg2.getRow(); rr < rg2.getRow() + rg2.getNumRows(); rr++) {
+        for (var cc = rg2.getColumn(); cc < rg2.getColumn() + rg2.getNumColumns(); cc++) {
+          var base = cc - ((cc - 1) % 3); // 그 날짜칸의 시간 열
+          var note = sh.getRange(rr, base + 1).getNote();
+          var m = note && note.match(/예약번호:(\S+)/);
+          if (m) resnos.push(m[1]);
+        }
+      }
+    } else {
+      alert('[네이버예약_데이터] 탭이나 [예약캘린더] 탭에서 보낼 예약을 선택한 뒤 실행해 주세요.');
+      return;
+    }
+    resnos = resnos.filter(function (x, i, a) { return x && a.indexOf(x) === i; });
+    if (!resnos.length) { alert('선택된 예약이 없습니다.'); return; }
+
+    var ui = SpreadsheetApp.getUi();
+    var conf = ui.alert('선택 발송', resnos.length + '건에 안내 메시지를 보냅니다.\n계속할까요?' +
+      (cfgOn('테스트 모드') ? '\n\n※ 지금은 테스트 모드입니다 (실제 발송 안 됨).' : ''), ui.ButtonSet.YES_NO);
+    if (conf !== ui.Button.YES) return;
+
+    var dataSh = sheetOf(SH.DATA);
+    var idx = buildResnoIndex();
+    var ok = 0, ng = 0, reasons = [];
+    resnos.forEach(function (no) {
+      var row = idx[no];
+      if (!row) { ng++; return; }
+      var res = sendForRow(dataSh, row.r, '개별', true);
+      if (res.ok) ok++; else { ng++; if (res.reason) reasons.push(no + ': ' + res.reason); }
+    });
+    alert('보냄 ' + ok + '건 / 실패 ' + ng + '건' +
+      (reasons.length ? '\n\n' + reasons.slice(0, 8).join('\n') : ''));
+  } catch (e) { logError('선택 발송', e); alert('문제가 생겼습니다: ' + e.message); }
+}
+
+function sendTestMessage() {
+  var to = cfgStr('테스트 수신번호', '');
+  if (!to) { alert('[설정] 탭의 "테스트 수신번호"에 본인 휴대폰번호를 먼저 넣어주세요.'); return; }
+  if (cfgOn('테스트 모드')) {
+    alert('지금은 "테스트 모드"라 실제로 보내지 않습니다.\n\n실제로 보내려면 [설정] 탭의 "테스트 모드"를 "미사용"으로 바꿔주세요.');
+    return;
+  }
+  if (!aligoReady()) { alert('[설정] 탭에 알리고 사용자ID · API키 · 발신번호를 먼저 넣어주세요.'); return; }
+  var r = sendSms(to, '[샵 CRM] 발송 테스트입니다. 이 문자가 보이면 설정이 정상입니다.');
+  alert(r.ok ? '보냈습니다! 휴대폰을 확인해 주세요.' : '실패했습니다.\n\n' + r.raw);
+}
+
+/* =========================================================
+ *  7. 자동실행(트리거) · 편집 감지 · 보호 · 진단
+ * ========================================================= */
+
+var TRIGGER_FNS = ['processBookingMails', 'sendReminderAdvance', 'sendReminderTomorrow', 'sendReminderToday',
+                   'dailyMaintenance', 'onEditInstallable'];
+
+function installTriggers() {
+  try {
+    ScriptApp.getProjectTriggers().forEach(function (t) {
+      if (TRIGGER_FNS.indexOf(t.getHandlerFunction()) >= 0) ScriptApp.deleteTrigger(t);
+    });
+
+    ScriptApp.newTrigger('processBookingMails').timeBased().everyMinutes(5).create();
+
+    var t0 = parseHm(cfgStr('사전 알림 시각', '14:00'));
+    ScriptApp.newTrigger('sendReminderAdvance').timeBased()
+      .atHour(t0.h).nearMinute(t0.m).everyDays(1).create();
+
+    var t1 = parseHm(cfgStr('전일 알림 시각', '18:00'));
+    ScriptApp.newTrigger('sendReminderTomorrow').timeBased()
+      .atHour(t1.h).nearMinute(t1.m).everyDays(1).create();
+
+    var t2 = parseHm(cfgStr('당일 알림 시각', '09:00'));
+    ScriptApp.newTrigger('sendReminderToday').timeBased()
+      .atHour(t2.h).nearMinute(t2.m).everyDays(1).create();
+
+    ScriptApp.newTrigger('dailyMaintenance').timeBased().atHour(1).nearMinute(15).everyDays(1).create();
+
+    ScriptApp.newTrigger('onEditInstallable').forSpreadsheet(ss()).onEdit().create();
+
+    toast('자동실행 시간을 다시 맞췄습니다.');
+  } catch (e) { logError('자동실행 설정', e); }
+}
+
+function parseHm(s) {
+  var m = String(s).match(/(\d{1,2})\s*[:시]\s*(\d{1,2})?/);
+  if (!m) return { h: 9, m: 0 };
+  var h = Math.min(23, Math.max(0, Number(m[1])));
+  var mi = Math.min(59, Math.max(0, Number(m[2] || 0)));
+  // nearMinute 는 15분 단위 권장
+  mi = Math.round(mi / 15) * 15;
+  if (mi > 45) mi = 45;
+  return { h: h, m: mi };
+}
+
+function dailyMaintenance() {
+  try {
+    recomputeCustomerStats();
+    // 이번달/다음달 캘린더 확보
+    createCalendarsForMonth(new Date());
+    var nm = nextMonthDate(new Date());
+    shops().forEach(function (s) {
+      if (!ss().getSheetByName(calSheetName(s, nm))) buildCalendarSheet(s, nm);
+    });
+    createCalendarsForMonth(nm);
+    refreshHome();
+  } catch (e) { logError('일일 정리작업', e); }
+}
+
+/* ---------- 편집 감지 ---------- */
+
+function onEditInstallable(e) {
+  try {
+    if (!e || !e.range) return;
+    var sh = e.range.getSheet();
+    var name = sh.getName();
+    var row = e.range.getRow(), col = e.range.getColumn();
+
+    // 1) 캘린더에서 담당자 입력 → 데이터 시트에 반영
+    if (name.indexOf(SH.CAL) === 0) {
+      var offset = (col - 1) % 3;         // 0=시간 1=예약자 2=담당자
+      var baseCol = col - offset;
+      var note = sh.getRange(row, baseCol + 1).getNote();
+      var m = note && note.match(/예약번호:(\S+)/);
+      if (m && offset === 2) {
+        var idx = buildResnoIndex();
+        var target = idx[m[1]];
+        if (target) {
+          var dsh = sheetOf(SH.DATA);
+          dsh.getRange(target.r, D.STAFF).setValue(e.range.getValue());
+        }
+      }
+      return;
+    }
+
+    // 2) 고객프로필 검색
+    if (name === SH.PROFILE) {
+      if (row === 3 && col === 2) { refreshProfile(); }
+      else if (row === 4 && col === 2) { renderProfile(); }
+      return;
+    }
+
+    // 3) 데이터 시트 직접 수정
+    if (name === SH.DATA && row > 1) {
+      if (col === D.PHONE) {
+        var v = sh.getRange(row, 1, 1, D_HEAD.length).getValues()[0];
+        var cid = v[D.CUSTID - 1];
+        if (!cid) {
+          cid = matchOrCreateCustomer(v[D.NAME - 1], v[D.PHONE - 1], v[D.SAFE - 1], v[D.SHOP - 1], v[D.SOURCE - 1] || '수동');
+          sh.getRange(row, D.CUSTID).setValue(cid);
+        } else {
+          syncPhoneToCustomer(cid, v[D.PHONE - 1]);
+        }
+        syncCalendarForBooking(v[D.SHOP - 1], v[D.DATE - 1]);
+      } else if (col === D.STATUS || col === D.DATE || col === D.TIME || col === D.NAME) {
+        var v2 = sh.getRange(row, 1, 1, D_HEAD.length).getValues()[0];
+        if (v2[D.STATUS - 1] === STATUS.CANCEL) {
+          deleteGCalEvent(v2[D.SHOP - 1], v2[D.CALID - 1]);
+          sh.getRange(row, D.CALID).setValue('');
+        } else {
+          upsertGCalEvent(sh, row);
+        }
+        syncCalendarForBooking(v2[D.SHOP - 1], v2[D.DATE - 1]);
+      }
+      return;
+    }
+
+    // 4) 설정 변경 시 캐시 비우기
+    if (name === SH.CONFIG) { _cfgCache = null; }
+  } catch (err) {
+    Logger.log('onEdit 오류: ' + err);
+  }
+}
+
+/* ---------- 시트 보호 ---------- */
+
+function protectSheets() {
+  try {
+    var me = Session.getEffectiveUser();
+    [SH.DATA, SH.CUST, SH.LOG].forEach(function (n) {
+      var sh = ss().getSheetByName(n);
+      if (!sh) return;
+      sh.getProtections(SpreadsheetApp.ProtectionType.RANGE).forEach(function (p) {
+        if (p.getDescription() === '자동기록(경고)') p.remove();
+      });
+      var p = sh.getRange(1, 1, 1, sh.getMaxColumns()).protect()
+        .setDescription('자동기록(경고)').setWarningOnly(true);
+    });
+    var log = ss().getSheetByName(SH.LOG);
+    if (log) {
+      log.getProtections(SpreadsheetApp.ProtectionType.SHEET).forEach(function (p) { p.remove(); });
+      log.protect().setDescription('발송로그(경고)').setWarningOnly(true);
+    }
+  } catch (e) { Logger.log('보호 설정 실패: ' + e); }
+}
+
+/* ---------- 매출통계 ---------- */
+
+function refreshAllSales() {
+  try {
+    shops().forEach(function (s) {
+      if (!ss().getSheetByName(SH.SALES + s.short)) buildSalesSheet(s);
+    });
+    SpreadsheetApp.flush();
+    toast('매출통계를 새로고침했습니다. (수식이 자동 계산됩니다)');
+  } catch (e) { logError('매출통계 새로고침', e); }
+}
+
+/* ---------- 진단 ---------- */
+
+function runDiagnostics() {
+  var lines = [];
+  var ok = function (b) { return b ? '✅' : '❌'; };
+  try {
+    lines.push('■ 탭 확인');
+    [SH.HOME, SH.DATA, SH.CUST, SH.PROFILE, SH.LOG, SH.CONFIG].forEach(function (n) {
+      lines.push('  ' + ok(!!ss().getSheetByName(n)) + ' ' + n);
+    });
+    shops().forEach(function (s) {
+      lines.push('  ' + ok(!!ss().getSheetByName(calSheetName(s, new Date()))) + ' ' + calSheetName(s, new Date()));
+      lines.push('  ' + ok(!!ss().getSheetByName(SH.SALES + s.short)) + ' ' + SH.SALES + s.short);
+    });
+
+    lines.push('');
+    lines.push('■ 자동실행');
+    var fns = ScriptApp.getProjectTriggers().map(function (t) { return t.getHandlerFunction(); });
+    ['processBookingMails', 'sendReminderAdvance', 'sendReminderTomorrow', 'sendReminderToday', 'onEditInstallable'].forEach(function (f) {
+      lines.push('  ' + ok(fns.indexOf(f) >= 0) + ' ' + f);
+    });
+
+    lines.push('');
+    lines.push('■ 연동');
+    lines.push('  ' + ok(cfgOn('메일 자동수집 사용')) + ' 메일 자동수집 켜짐');
+    var q = cfgStr('메일 검색조건', '');
+    var cnt = 0;
+    try { cnt = GmailApp.search(q, 0, 5).length; } catch (e) {}
+    lines.push('  ' + ok(cnt > 0) + ' 검색조건으로 찾은 메일: ' + cnt + '통  (조건: ' + q + ')');
+    shops().forEach(function (s) {
+      lines.push('  ' + ok(!!cfgStr(s.calIdKey, '')) + ' ' + s.name + ' 구글캘린더');
+    });
+    lines.push('  ' + ok(!!cfgStr('사진 루트폴더ID', '')) + ' 사진 저장 폴더');
+    lines.push('  ' + ok(aligoReady()) + ' 알리고 문자 설정' + (cfgOn('테스트 모드') ? ' (테스트 모드)' : ''));
+
+    lines.push('');
+    lines.push('■ 데이터');
+    var rows = readData();
+    lines.push('  예약 ' + rows.length + '건 / 고객 ' + readCustomers().length + '명');
+    lines.push('  확인필요 ' + rows.filter(function (x) { return x[D.STATUS - 1] === STATUS.CHECK; }).length + '건');
+    lines.push('  연락처 없는 예약 ' + rows.filter(function (x) {
+      return !x[D.PHONE - 1] && !x[D.SAFE - 1] && x[D.STATUS - 1] !== STATUS.CANCEL; }).length + '건');
+    var err = cfgStr('마지막 오류', '');
+    lines.push('');
+    lines.push('■ 마지막 오류: ' + (err || '없음'));
+  } catch (e) {
+    lines.push('진단 중 오류: ' + e.message);
+  }
+  alert(lines.join('\n'));
+}
+
+/* ---------- 메일 파싱 테스트 (개발/점검용) ---------- */
+
+function testParseLatestMail() {
+  var q = cfgStr('메일 검색조건', 'subject:"네이버 예약" newer_than:30d');
+  var th = GmailApp.search(q, 0, 1);
+  if (!th.length) { alert('검색조건에 맞는 메일이 없습니다.\n조건: ' + q); return; }
+  var msgs = th[0].getMessages();
+  var msg = msgs[msgs.length - 1];
+  var p = parseBookingMail(msg);
+  alert(
+    '제목: ' + p.subject + '\n\n' +
+    '읽기 성공: ' + (p.ok ? '예' : '아니오 (' + p.reason + ')') + '\n' +
+    '샵: ' + (p.shop ? p.shop.name : '(못 찾음)') + '\n' +
+    '상태: ' + p.status + '\n' +
+    '예약번호: ' + p.resno + '\n' +
+    '예약자명: ' + p.name + '\n' +
+    '연락처: ' + (p.phone || p.safe || '(메일에 없음)') + '\n' +
+    '이용일: ' + (p.date ? ymd(p.date) : '') + ' ' + p.time + '\n' +
+    '예약상품: ' + p.product + '\n' +
+    '선택메뉴: ' + p.option + '\n' +
+    '인원: ' + p.people + '\n' +
+    '금액: ' + p.amount + '\n' +
+    '요청사항: ' + p.request);
+}
+
+function showMailBodyForDebug() {
+  var q = cfgStr('메일 검색조건', 'subject:"네이버 예약" newer_than:30d');
+  var th = GmailApp.search(q, 0, 1);
+  if (!th.length) { alert('메일이 없습니다.'); return; }
+  var msgs = th[0].getMessages();
+  var t = mailText(msgs[msgs.length - 1]);
+  alert(t.slice(0, 1200));
+}
+
+/* =========================================================
+ *  8. 웹앱 (홈페이지·휴대폰 앱 화면)
+ *     배포 → 새 배포 → 웹 앱 으로 게시하면 주소가 나옵니다.
+ * ========================================================= */
+
+function doGet(e) {
+  var page = (e && e.parameter && e.parameter.page) || 'app';
+  var out = HtmlService.createTemplateFromFile('WebApp').evaluate();
+  out = out
+    .setTitle('뷰티샵 예약 관리')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  /* 홈 화면에 추가했을 때 주소창 없이 앱처럼 열리게 합니다 */
+  try { out.addMetaTag('mobile-web-app-capable', 'yes'); } catch (e) {}
+  try { out.addMetaTag('apple-mobile-web-app-capable', 'yes'); } catch (e) {}
+  return out;
+}
+
+function include(name) {
+  return HtmlService.createHtmlOutputFromFile(name).getContent();
+}
+
+/* 웹앱 주소 보여주기 */
+function showWebAppUrl() {
+  var url = '';
+  try { url = ScriptApp.getService().getUrl(); } catch (e) {}
+  if (!url) {
+    alert('아직 웹앱으로 배포되지 않았습니다.\n\n' +
+      'Apps Script 편집기에서 오른쪽 위 [배포] → [새 배포] →\n' +
+      '유형 선택(⚙️) → [웹 앱] → 액세스 권한 "나만" → [배포]\n' +
+      '를 누르면 주소가 나옵니다.');
+    return;
+  }
+  alert('앱 주소입니다. 휴대폰 브라우저에서 열고\n"홈 화면에 추가"를 누르면 앱처럼 쓸 수 있습니다.\n\n' + url);
+}
+
+/* ---------- 웹앱용 공통 변환 ---------- */
+
+function rowToObj(v) {
+  return {
+    resno:   String(v[D.RESNO - 1] || ''),
+    shop:    String(v[D.SHOP - 1] || ''),
+    status:  String(v[D.STATUS - 1] || ''),
+    name:    String(v[D.NAME - 1] || ''),
+    phone:   String(v[D.PHONE - 1] || ''),
+    safe:    String(v[D.SAFE - 1] || ''),
+    date:    ymd(v[D.DATE - 1]),
+    time:    timeStr(v[D.TIME - 1]),
+    product: String(v[D.PRODUCT - 1] || ''),
+    option:  String(v[D.OPTION - 1] || ''),
+    people:  String(v[D.PEOPLE - 1] || ''),
+    request: String(v[D.REQUEST - 1] || ''),
+    amount:  Number(v[D.AMOUNT - 1] || 0),
+    paid:    Number(v[D.PAID - 1] || 0),
+    staff:   String(v[D.STAFF - 1] || ''),
+    source:  String(v[D.SOURCE - 1] || ''),
+    custId:  String(v[D.CUSTID - 1] || ''),
+    memo:    String(v[D.MEMO - 1] || '')
+  };
+}
+
+function custToObj(v) {
+  return {
+    id:      String(v[C.ID - 1] || ''),
+    name:    String(v[C.NAME - 1] || ''),
+    phone:   String(v[C.PHONE - 1] || ''),
+    safe:    String(v[C.SAFE - 1] || ''),
+    shop:    String(v[C.SHOP - 1] || ''),
+    first:   ymd(v[C.FIRST - 1]),
+    last:    ymd(v[C.LAST - 1]),
+    visits:  Number(v[C.VISITS - 1] || 0),
+    product: String(v[C.PRODUCT - 1] || ''),
+    total:   v[C.TOTAL - 1] === '' ? null : Number(v[C.TOTAL - 1]),
+    used:    Number(v[C.USED - 1] || 0),
+    left:    v[C.LEFT - 1] === '' ? null : Number(v[C.LEFT - 1]),
+    memo:    String(v[C.MEMO - 1] || ''),
+    folder:  String(v[C.FOLDER - 1] || ''),
+    next:    ymd(v[C.NEXT - 1]),
+    gender:  String(v[C.GENDER - 1] || ''),
+    birth:   ymd(v[C.BIRTH - 1]),
+    staff:   String(v[C.STAFF - 1] || ''),
+    prepaid: Number(v[C.PREPAID - 1] || 0),
+    rel:     String(v[C.REL - 1] || ''),
+    needle:  String(v[C.NEEDLE - 1] || ''),
+    pigment: String(v[C.PIGMENT - 1] || ''),
+    tone:    String(v[C.TONE - 1] || ''),
+    grade:   String(v[C.GRADE - 1] || ''),
+    tag:     String(v[C.TAG - 1] || ''),
+    point:   Number(v[C.POINT - 1] || 0)
+  };
+}
+
+/* ---------- 앱 시작할 때 한 번 ---------- */
+
+/* ---------- 앱 잠금 (비밀번호) ---------- */
+
+function appPassword() { return String(cfgStr('앱 비밀번호', '')).trim(); }
+
+/* 직원 PIN: "김실장:482913, 이실장:770124" 형식 */
+function staffPins() {
+  var out = [];
+  String(cfgStr('직원 PIN', '')).split(',').forEach(function (chunk) {
+    var t = String(chunk).trim();
+    if (!t) return;
+    var i = t.lastIndexOf(':');
+    if (i < 1) return;
+    var nm = t.slice(0, i).trim(), pin = t.slice(i + 1).trim();
+    if (nm && pin) out.push({ name: nm, pin: pin });
+  });
+  return out;
+}
+function appLocked() { return !!(appPassword() || staffPins().length); }
+function staffSeesSales() {
+  return String(cfgStr('직원 매출 보기', '숨김')).indexOf('보임') >= 0;
+}
+
+/* 접속 기록 */
+function logAuth(name, role, result) {
+  try {
+    var sh = ss().getSheetByName(SH.AUTH);
+    if (!sh) {
+      sh = ss().insertSheet(SH.AUTH);
+      sh.getRange(1, 1, 1, AUTH_HEAD.length).setValues([AUTH_HEAD]).setFontWeight('bold');
+      sh.setFrozenRows(1);
+    }
+    sh.appendRow([fmt(new Date(), 'yyyy-MM-dd HH:mm:ss'), name || '', role || '', result || '']);
+    var last = sh.getLastRow();
+    if (last > 501) sh.deleteRows(2, last - 501);
+  } catch (e) {}
+}
+
+/* 무작정 대입 막기 (10분 안에 10번 실패하면 잠시 막습니다) */
+function loginFails() {
+  try { return Number(CacheService.getScriptCache().get('LOGINFAIL') || 0); } catch (e) { return 0; }
+}
+function bumpLoginFail() {
+  try {
+    var c = CacheService.getScriptCache();
+    c.put('LOGINFAIL', String(loginFails() + 1), 600);
+  } catch (e) {}
+}
+function clearLoginFail() {
+  try { CacheService.getScriptCache().remove('LOGINFAIL'); } catch (e) {}
+}
+
+function tokenStore() { return PropertiesService.getScriptProperties(); }
+function newToken(name, role) {
+  var t = Utilities.getUuid().replace(/-/g, '');
+  tokenStore().setProperty('TK_' + t,
+    [String(Date.now() + 30 * 86400000), role || 'owner', name || '사장님'].join('|'));
+  return t;
+}
+function clearTokens(role) {
+  var st = tokenStore(), all = st.getProperties();
+  Object.keys(all).forEach(function (k) {
+    if (k.indexOf('TK_') !== 0) return;
+    if (role && String(all[k]).split('|')[1] !== role) return;
+    st.deleteProperty(k);
+  });
+}
+function authInfo(token) {
+  if (!appLocked()) return { ok: true, role: 'owner', name: '사장님' };
+  token = String(token || '').trim();
+  if (!token) return { ok: false };
+  var st = tokenStore();
+  var v = st.getProperty('TK_' + token);
+  if (!v) return { ok: false };
+  var p = String(v).split('|');
+  if (Number(p[0]) < Date.now()) { st.deleteProperty('TK_' + token); return { ok: false }; }
+  var role = p[1] || 'owner', name = p[2] || '사장님';
+  /* 명단에서 지운 직원은 남아있는 토큰도 바로 막습니다 */
+  if (role === 'staff') {
+    var live = staffPins(), found = false;
+    for (var i = 0; i < live.length; i++) if (live[i].name === name) { found = true; break; }
+    if (!found) { st.deleteProperty('TK_' + token); return { ok: false }; }
+  }
+  return { ok: true, role: role, name: name };
+}
+function authOK(token) { return authInfo(token).ok; }
+
+function api_login(pw) {
+  var owner = appPassword(), staff = staffPins();
+  if (!owner && !staff.length) {
+    return { ok: true, token: 'open', role: 'owner', name: '사장님' };
+  }
+  if (loginFails() >= 10) {
+    return { ok: false, msg: '틀린 시도가 많습니다. 10분 뒤에 다시 해주세요.' };
+  }
+  var v = String(pw || '').trim();
+  if (owner && v === owner) {
+    clearLoginFail(); logAuth('사장님', 'owner', '성공');
+    return { ok: true, token: newToken('사장님', 'owner'), role: 'owner', name: '사장님' };
+  }
+  for (var i = 0; i < staff.length; i++) {
+    if (v === staff[i].pin) {
+      clearLoginFail(); logAuth(staff[i].name, 'staff', '성공');
+      return { ok: true, token: newToken(staff[i].name, 'staff'),
+               role: 'staff', name: staff[i].name };
+    }
+  }
+  bumpLoginFail(); logAuth('', '', '실패');
+  Utilities.sleep(1500);                         // 무작정 대입하는 것을 늦춥니다
+  return { ok: false, msg: '번호가 맞지 않습니다.' };
+}
+
+/* 사장님만: 직원 PIN 명단 저장 */
+function api_savePins(p) {
+  var list = (p && p.staff) || [];
+  var seen = {}, out = [];
+  for (var i = 0; i < list.length; i++) {
+    var nm = String(list[i].name || '').replace(/[,:]/g, ' ').trim();
+    var pin = String(list[i].pin || '').trim();
+    if (!nm || !pin) continue;
+    if (!/^[A-Za-z0-9]{4,20}$/.test(pin)) {
+      return { ok: false, msg: nm + ' 번호는 영문·숫자 4~20자로 넣어주세요. (띄어쓰기·기호 불가)' };
+    }
+    if (pin === appPassword()) return { ok: false, msg: nm + ' 번호가 사장님 번호와 같습니다.' };
+    if (seen[pin]) return { ok: false, msg: '같은 번호를 두 사람에게 줄 수 없습니다: ' + pin };
+    seen[pin] = 1;
+    out.push(nm + ':' + pin);
+  }
+  if (out.length && !appPassword()) {
+    return { ok: false, msg: '사장님 번호를 먼저 정해주세요. 안 그러면 사장님이 못 들어옵니다.' };
+  }
+  setCfg('직원 PIN', out.join(','));
+  setCfg('직원 매출 보기', (p && p.sales) ? '보임' : '숨김');
+  _cfgCache = null;
+  return { ok: true, count: out.length };
+}
+
+function api_setPassword(p) {
+  if (!authOK(p && p.token)) return { ok: false, authFail: true, msg: '다시 로그인해 주세요.' };
+  var np = String((p && p.pw) || '').trim();
+  if (np.length < 4) return { ok: false, msg: '번호는 4자 이상으로 정해주세요.' };
+  if (!/^[A-Za-z0-9]{4,20}$/.test(np)) {
+    return { ok: false, msg: '영문·숫자 4~20자로 정해주세요. (띄어쓰기·기호는 로그인 화면에서 입력할 수 없습니다)' };
+  }
+  var sp = staffPins();
+  for (var i = 0; i < sp.length; i++) {
+    if (sp[i].pin === np) return { ok: false, msg: '직원 번호와 같은 번호는 쓸 수 없습니다.' };
+  }
+  setCfg('앱 비밀번호', np);
+  _cfgCache = null;
+  clearTokens('owner');                           // 사장님으로 로그인된 기기만 해제
+  return { ok: true, token: newToken('사장님', 'owner') };
+}
+
+/* 화면에서 오는 모든 요청은 이 문을 거칩니다 */
+var API_OPEN = { api_login: true };
+
+/* 사장님만 쓸 수 있는 기능 */
+var OWNER_ONLY = {
+  api_sales: 1, api_salesReport: 1, api_cash: 1, api_saveCash: 1, api_deleteCash: 1,
+  api_staffReport: 1, api_trash: 1, api_restoreTrash: 1, api_deleteCustomer: 1,
+  api_setPassword: 1, api_savePins: 1, api_saveMenu: 1, api_saveForms: 1
+};
+/* 그 중 매출 관련 — [설정]에서 "직원 매출 보기 = 보임"이면 직원도 볼 수 있습니다 */
+var SALES_API = {
+  api_sales: 1, api_salesReport: 1, api_cash: 1, api_saveCash: 1,
+  api_deleteCash: 1, api_staffReport: 1
+};
+function blockedForStaff(name) {
+  if (!OWNER_ONLY[name]) return false;
+  if (SALES_API[name] && staffSeesSales()) return false;
+  return true;
+}
+
+/* 지금 요청을 보낸 사람 (api()가 채워 넣습니다) */
+var CUR = { role: 'owner', name: '사장님' };
+
+function api(name, args, token) {
+  try {
+    name = String(name || '');
+    if (name.indexOf('api_') !== 0) return { ok: false, msg: '알 수 없는 요청입니다.' };
+    var fn = globalThis[name];
+    if (typeof fn !== 'function') return { ok: false, msg: '알 수 없는 요청입니다: ' + name };
+    if (API_OPEN[name]) return fn.apply(null, args || []);
+    var who = authInfo(token);
+    if (!who.ok) return { ok: false, authFail: true, msg: '다시 로그인해 주세요.' };
+    CUR = { role: who.role, name: who.name };
+    if (who.role !== 'owner' && blockedForStaff(name)) {
+      return { ok: false, msg: '이 기능은 사장님만 쓸 수 있습니다.' };
+    }
+    return fn.apply(null, args || []);
+  } catch (e) {
+    logError('앱 요청(' + name + ')', e);
+    return { ok: false, msg: e.message };
+  }
+}
+
+function api_bootstrap() {
+  var list = shops().map(function (s) { return { name: s.name, short: s.short, idx: s.idx }; });
+  return {
+    ok: true,
+    today: ymd(new Date()),
+    shops: list,
+    staff: cfgStr('담당자 명단', '').split(',').map(function (x) { return x.trim(); })
+             .filter(function (x) { return x; }),
+    testMode: cfgOn('테스트 모드'),
+    smsReady: aligoReady(),
+    lastMail: cfgStr('마지막 메일확인 시각', ''),
+    locked: appLocked(),
+    role: CUR.role,
+    me: CUR.name,
+    canSales: (CUR.role === 'owner') || staffSeesSales(),
+    staffSales: staffSeesSales(),
+    pins: (CUR.role === 'owner')
+      ? staffPins().map(function (x) { return { name: x.name, pin: x.pin }; })
+      : [],
+    sheetUrl: (CUR.role === 'owner') ? ss().getUrl() : ''
+  };
+}
+
+/* ---------- 홈 화면 ---------- */
+
+function api_home() {
+  var rows = readData();
+  var t0 = ymd(new Date());
+  var t1 = ymd(new Date(Date.now() + 86400000));
+  var today = [], tomorrow = [];
+  var needCheck = 0, noPhone = 0;
+
+  rows.forEach(function (v) {
+    var o = rowToObj(v);
+    if (o.status === STATUS.CHECK) needCheck++;
+    if (o.status === STATUS.OK && !o.phone && !o.safe && o.date >= t0) noPhone++;
+    if (o.status === STATUS.CANCEL) return;
+    if (o.date === t0) today.push(o);
+    else if (o.date === t1) tomorrow.push(o);
+  });
+  var byTime = function (a, b) { return String(a.time).localeCompare(String(b.time)); };
+  today.sort(byTime); tomorrow.sort(byTime);
+
+  var lowRound = [];
+  readCustomers().forEach(function (v) {
+    var c = custToObj(v);
+    if (c.total !== null && c.left !== null && c.left <= 1) lowRound.push(c);
+  });
+
+  // 이번달 매출
+  var now = new Date();
+  var ym = fmt(now, 'yyyy-MM');
+  var monthSales = {};
+  shops().forEach(function (s) { monthSales[s.name] = 0; });
+  readSlog().forEach(function (g) {
+    if (String(g.date).indexOf(ym) !== 0) return;
+    if (monthSales[g.shop] === undefined) monthSales[g.shop] = 0;
+    monthSales[g.shop] += g.amount;
+  });
+  // 시술은 끝났는데 결제가 아직 안 들어간 예약
+  var noPaid = 0;
+  var paidSet = {};
+  readSlog().forEach(function (g) { paidSet[g.resno] = true; });
+  rows.forEach(function (v) {
+    var o = rowToObj(v);
+    if (o.status === STATUS.DONE && !paidSet[o.resno]) noPaid++;
+  });
+
+  return {
+    ok: true, today: t0, tomorrow: t1,
+    todayList: today, tomorrowList: tomorrow,
+    needCheck: needCheck, noPhone: noPhone,
+    lowRound: lowRound.slice(0, 20),
+    monthSales: monthSales,
+    noPaid: noPaid,
+    lastMail: cfgStr('마지막 메일확인 시각', '')
+  };
+}
+
+/* ---------- 날짜별 예약 ---------- */
+
+function api_day(dateStr) {
+  var rows = readData();
+  var out = rows.map(rowToObj).filter(function (o) { return o.date === dateStr; });
+  out.sort(function (a, b) { return String(a.time).localeCompare(String(b.time)); });
+  return { ok: true, date: dateStr, list: out };
+}
+
+/* 한 달 요약: 날짜별 건수 (달력에 점 찍기용) */
+function api_range(from, to) {
+  try {
+    var f = ymd(toDate(from)), t = ymd(toDate(to));
+    var out = readData().map(rowToObj).filter(function (o) {
+      return o.date && o.date >= f && o.date <= t;
+    });
+    out.sort(function (a, b) {
+      if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+      return String(a.time).localeCompare(String(b.time));
+    });
+    return { ok: true, from: f, to: t, list: out };
+  } catch (e) { return { ok: false, msg: e.message, list: [] }; }
+}
+
+function api_month(ym) {
+  var counts = {};
+  readData().forEach(function (v) {
+    var o = rowToObj(v);
+    if (o.status === STATUS.CANCEL) return;
+    if (o.date.indexOf(ym) !== 0) return;
+    counts[o.date] = counts[o.date] || { n: 0, shops: {} };
+    counts[o.date].n++;
+    counts[o.date].shops[o.shop] = true;
+  });
+  var out = {};
+  Object.keys(counts).forEach(function (k) {
+    out[k] = { n: counts[k].n, shops: Object.keys(counts[k].shops) };
+  });
+  return { ok: true, ym: ym, days: out };
+}
+
+/* ---------- 예약 수정 ---------- */
+
+function api_updateBooking(p) {
+  try {
+    var sh = sheetOf(SH.DATA);
+    var idx = buildResnoIndex();
+    var t = idx[String(p.resno)];
+    if (!t) return { ok: false, msg: '예약을 찾지 못했습니다.' };
+    var r = t.r;
+    var before = sh.getRange(r, 1, 1, D_HEAD.length).getValues()[0];
+
+    if (p.phone !== undefined) {
+      var ph = normPhone(p.phone);
+      if (isSafePhone(ph)) sh.getRange(r, D.SAFE).setValue(ph);
+      else sh.getRange(r, D.PHONE).setValue(ph);
+    }
+    if (p.staff !== undefined)  sh.getRange(r, D.STAFF).setValue(p.staff);
+    if (p.status !== undefined) sh.getRange(r, D.STATUS).setValue(p.status);
+    if (p.paid !== undefined && p.paid !== '')  sh.getRange(r, D.PAID).setValue(Number(p.paid));
+    if (p.time !== undefined && p.time)  sh.getRange(r, D.TIME).setValue(normTime(p.time) || p.time);
+    if (p.date !== undefined && p.date)  sh.getRange(r, D.DATE).setValue(toDate(p.date));
+    if (p.memo !== undefined)   sh.getRange(r, D.MEMO).setValue(p.memo);
+
+    var after = sh.getRange(r, 1, 1, D_HEAD.length).getValues()[0];
+    var cid = after[D.CUSTID - 1];
+    if (!cid && after[D.NAME - 1]) {
+      cid = matchOrCreateCustomer(after[D.NAME - 1], after[D.PHONE - 1], after[D.SAFE - 1],
+                                  after[D.SHOP - 1], after[D.SOURCE - 1] || '수동');
+      sh.getRange(r, D.CUSTID).setValue(cid);
+    } else if (cid && after[D.PHONE - 1]) {
+      syncPhoneToCustomer(cid, after[D.PHONE - 1]);
+    }
+
+    if (after[D.STATUS - 1] === STATUS.CANCEL) {
+      deleteGCalEvent(after[D.SHOP - 1], after[D.CALID - 1]);
+      sh.getRange(r, D.CALID).setValue('');
+    } else {
+      upsertGCalEvent(sh, r);
+    }
+    syncCalendarForBooking(before[D.SHOP - 1], before[D.DATE - 1]);
+    if (ymd(before[D.DATE - 1]) !== ymd(after[D.DATE - 1])) {
+      syncCalendarForBooking(after[D.SHOP - 1], after[D.DATE - 1]);
+    }
+    recomputeCustomerStats();
+    return { ok: true, booking: rowToObj(sh.getRange(r, 1, 1, D_HEAD.length).getValues()[0]) };
+  } catch (e) {
+    logError('앱 예약수정', e);
+    return { ok: false, msg: e.message };
+  }
+}
+
+/* ---------- 수동 예약 추가 ---------- */
+
+function api_addBooking(p) {
+  try {
+    if (!p.shop || !p.date || !p.name) return { ok: false, msg: '샵·날짜·이름은 반드시 넣어주세요.' };
+    var sh = sheetOf(SH.DATA);
+    var resno = 'M' + fmt(new Date(), 'yyMMddHHmmss') + Math.floor(Math.random() * 90 + 10);
+    var row = newDataRow();
+    row[D.RESNO - 1]   = resno;
+    row[D.SHOP - 1]    = p.shop;
+    row[D.STATUS - 1]  = STATUS.OK;
+    row[D.NAME - 1]    = String(p.name).trim();
+    var ph = normPhone(p.phone || '');
+    if (isSafePhone(ph)) row[D.SAFE - 1] = ph; else row[D.PHONE - 1] = ph;
+    row[D.DATE - 1]    = toDate(p.date);
+    row[D.TIME - 1]    = normTime(p.time || '') || (p.time || '');
+    row[D.PRODUCT - 1] = p.product || '';
+    row[D.OPTION - 1]  = p.option || '';
+    row[D.AMOUNT - 1]  = p.amount ? Number(p.amount) : '';
+    row[D.PAID - 1]    = '';
+    row[D.STAFF - 1]   = p.staff || '';
+    row[D.REQUEST - 1] = p.request || '';
+    row[D.SOURCE - 1]  = '수동';
+    row[D.PROCAT - 1]  = nowStr();
+    row[D.CUSTID - 1]  = matchOrCreateCustomer(row[D.NAME - 1], row[D.PHONE - 1], row[D.SAFE - 1], p.shop, '수동');
+    sh.appendRow(row);
+    var r = sh.getLastRow();
+    upsertGCalEvent(sh, r);
+    syncCalendarForBooking(p.shop, row[D.DATE - 1]);
+    recomputeCustomerStats();
+    return { ok: true, resno: resno };
+  } catch (e) {
+    logError('앱 예약추가', e);
+    return { ok: false, msg: e.message };
+  }
+}
+
+/* ---------- 고객 ---------- */
+
+function api_searchCustomers(term, filter) {
+  term = String(term || '').trim();
+  var f = String(filter || '').trim();
+  var rows = readCustomers().map(custToObj);
+  var today = ymd(new Date());
+  var mmdd = today.slice(5);
+
+  if (f) {
+    rows = rows.filter(function (c) {
+      if (f === '생일') return c.birth && String(c.birth).slice(5) === mmdd;
+      if (f === '이번달생일') return c.birth && String(c.birth).slice(5, 7) === today.slice(5, 7);
+      if (f === '선불보유') return Number(c.prepaid || 0) > 0;
+      if (f === '번호없음') return !c.phone && !c.safe;
+      if (f === '휴면') {
+        if (c.grade === '휴면') return true;
+        if (!c.last) return false;
+        return dayDiff(c.last, today) >= 180;
+      }
+      if (GRADES.indexOf(f) >= 0) return c.grade === f;
+      return String(c.tag || '').indexOf(f) >= 0;
+    });
+  }
+
+  if (!term) {
+    rows.sort(function (a, b) { return String(b.last).localeCompare(String(a.last)); });
+    return { ok: true, list: rows.slice(0, 60), total: rows.length,
+             grades: GRADES, tags: allTags() };
+  }
+  var hit = rows.filter(function (c) {
+    return c.name.indexOf(term) >= 0 ||
+           last4(c.phone) === term || last4(c.safe) === term ||
+           onlyDigits(c.phone).indexOf(onlyDigits(term)) >= 0 && onlyDigits(term).length >= 3 ||
+           String(c.tag || '').indexOf(term) >= 0 ||
+           c.id === term;
+  });
+  return { ok: true, list: hit.slice(0, 60), total: hit.length,
+           grades: GRADES, tags: allTags() };
+}
+
+function allTags() {
+  var set = {};
+  readCustomers().forEach(function (v) {
+    String(v[C.TAG - 1] || '').split(',').forEach(function (t) {
+      t = t.trim(); if (t) set[t] = true;
+    });
+  });
+  return Object.keys(set).sort();
+}
+
+function api_customer(id) {
+  var rows = readCustomers();
+  var found = null;
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i][C.ID - 1]).trim() === String(id).trim()) { found = custToObj(rows[i]); break; }
+  }
+  if (!found) return { ok: false, msg: '고객을 찾지 못했습니다.' };
+  var hist = readData().map(rowToObj).filter(function (o) { return o.custId === found.id; });
+  hist.sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
+  var sales = 0;
+  try {
+    readSlog().forEach(function (g) { if (g.custId === found.id) sales += g.amount; });
+  } catch (e) {}
+  return { ok: true, customer: found, history: hist, sales: sales,
+           staff: cfgStr('담당자 명단', '').split(',').map(function (x) { return x.trim(); })
+                    .filter(function (x) { return x; }) };
+}
+
+function api_saveCustomer(p) {
+  try {
+    var sh = sheetOf(SH.CUST);
+    var rows = readCustomers();
+    for (var i = 0; i < rows.length; i++) {
+      if (String(rows[i][C.ID - 1]).trim() === String(p.id).trim()) {
+        var r = i + 2;
+        if (p.name !== undefined && p.name)  sh.getRange(r, C.NAME).setValue(String(p.name).trim());
+        if (p.phone !== undefined) {
+          var ph = normPhone(p.phone);
+          if (isSafePhone(ph)) sh.getRange(r, C.SAFE).setValue(ph);
+          else sh.getRange(r, C.PHONE).setValue(ph);
+        }
+        if (p.memo !== undefined)    sh.getRange(r, C.MEMO).setValue(p.memo);
+        if (p.product !== undefined) sh.getRange(r, C.PRODUCT).setValue(p.product);
+        if (p.total !== undefined)   sh.getRange(r, C.TOTAL).setValue(p.total === '' ? '' : Number(p.total));
+        if (p.gender !== undefined)  sh.getRange(r, C.GENDER).setValue(p.gender);
+        if (p.birth !== undefined)   sh.getRange(r, C.BIRTH).setValue(p.birth ? toDate(p.birth) : '');
+        if (p.staff !== undefined)   sh.getRange(r, C.STAFF).setValue(p.staff);
+        if (p.prepaid !== undefined) sh.getRange(r, C.PREPAID).setValue(p.prepaid === '' ? '' : Number(p.prepaid));
+        if (p.rel !== undefined)     sh.getRange(r, C.REL).setValue(p.rel);
+        if (p.needle !== undefined)  sh.getRange(r, C.NEEDLE).setValue(p.needle);
+        if (p.pigment !== undefined) sh.getRange(r, C.PIGMENT).setValue(p.pigment);
+        if (p.tone !== undefined)    sh.getRange(r, C.TONE).setValue(p.tone);
+        if (p.grade !== undefined)   sh.getRange(r, C.GRADE).setValue(p.grade);
+        if (p.tag !== undefined)     sh.getRange(r, C.TAG).setValue(p.tag);
+        sh.getRange(r, C.LEFT).setFormula('=IF($J' + r + '="","",$J' + r + '-$K' + r + ')');
+        SpreadsheetApp.flush();
+        return { ok: true, customer: custToObj(sh.getRange(r, 1, 1, C_HEAD.length).getValues()[0]) };
+      }
+    }
+    return { ok: false, msg: '고객을 찾지 못했습니다.' };
+  } catch (e) {
+    logError('앱 고객저장', e);
+    return { ok: false, msg: e.message };
+  }
+}
+
+function api_addCustomer(p) {
+  try {
+    var name = String((p && p.name) || '').trim();
+    if (!name) return { ok: false, msg: '이름을 넣어주세요.' };
+    var ph = normPhone(p.phone || '');
+    var phone = '', safe = '';
+    if (ph) { if (isSafePhone(ph)) safe = ph; else phone = ph; }
+    var shopName = p.shop || (shops()[0] ? shops()[0].name : '');
+    var id = matchOrCreateCustomer(name, phone, safe, shopName, '수동');
+    if (!id) return { ok: false, msg: '고객을 만들지 못했습니다.' };
+    var q = { id: id, name: name };
+    if (ph) q.phone = ph;
+    if (p.product !== undefined) q.product = p.product || '';
+    if (p.total !== undefined)   q.total = (p.total === '' ? '' : p.total);
+    if (p.memo !== undefined)    q.memo = p.memo || '';
+    var r = api_saveCustomer(q);
+    return { ok: true, id: id, customer: r && r.customer };
+  } catch (e) {
+    logError('앱 고객추가', e);
+    return { ok: false, msg: e.message };
+  }
+}
+
+function api_deleteCustomer(id) {
+  try {
+    var sh = sheetOf(SH.CUST);
+    var rows = readCustomers();
+    for (var i = 0; i < rows.length; i++) {
+      if (String(rows[i][C.ID - 1]).trim() === String(id).trim()) {
+        toTrash('고객', id, rows[i][C.NAME - 1] + ' ' + (rows[i][C.PHONE - 1] || rows[i][C.SAFE - 1] || ''), rows[i]);
+        sh.deleteRow(i + 2);
+        SpreadsheetApp.flush();
+        return { ok: true };
+      }
+    }
+    return { ok: false, msg: '고객을 찾지 못했습니다.' };
+  } catch (e) {
+    logError('앱 고객삭제', e);
+    return { ok: false, msg: e.message };
+  }
+}
+
+function api_customerFolder(id) {
+  try { return { ok: true, url: ensureCustomerFolder(String(id)) }; }
+  catch (e) { return { ok: false, msg: e.message }; }
+}
+
+/* ---------- 매출 ---------- */
+
+function api_sales(year) {
+  year = Number(year) || new Date().getFullYear();
+  var out = { ok: true, year: year, shops: {}, months: [], byItem: [], total: 0,
+              fee: 0, net: 0, feeMonths: [], feeRate: npayRate() };
+  shops().forEach(function (s) {
+    out.shops[s.name] = { total: 0, months: [] };
+    for (var m = 0; m < 12; m++) out.shops[s.name].months.push(0);
+  });
+  for (var i = 0; i < 12; i++) { out.months.push(0); out.feeMonths.push(0); }
+  var items = {};
+  var byResM = {};
+  readSlog().forEach(function (g) {
+    if (!g.date || Number(String(g.date).slice(0, 4)) !== year) return;
+    var m = Number(String(g.date).slice(5, 7)) - 1;
+    if (m < 0 || m > 11) return;
+    if (!out.shops[g.shop]) {
+      out.shops[g.shop] = { total: 0, months: [] };
+      for (var k = 0; k < 12; k++) out.shops[g.shop].months.push(0);
+    }
+    out.shops[g.shop].months[m] += g.amount;
+    out.shops[g.shop].total += g.amount;
+    out.months[m] += g.amount;
+    out.total += g.amount;
+    var rk = String(m) + '|' + g.resno;
+    var br = byResM[rk] || (byResM[rk] = { m: m, pay: '', amount: 0, npay: 0 });
+    if (g.pay) br.pay = g.pay;
+    br.amount += g.amount;
+    if (Number(g.npay) > br.npay) br.npay = Number(g.npay);
+    var key = g.shop + '|' + g.item;
+    if (!items[key]) items[key] = { shop: g.shop, name: g.item, total: 0, n: 0 };
+    items[key].total += g.amount;
+    if (g.item !== '할인') items[key].n++;
+  });
+  Object.keys(byResM).forEach(function (k) {
+    var b = byResM[k];
+    var one = {}; one[k] = b;
+    var f = feeOf(one).fee;
+    out.feeMonths[b.m] += f;
+    out.fee += f;
+  });
+  out.net = out.total - out.fee;
+  out.byItem = Object.keys(items).map(function (k) { return items[k]; })
+    .sort(function (a, b) { return b.total - a.total; });
+  return out;
+}
+
+/* ---------- 시술메뉴 ---------- */
+
+function api_menu() {
+  try { return { ok: true, list: readMenu(), shops: shops().map(function (s) { return s.name; }) }; }
+  catch (e) { return { ok: false, msg: e.message, list: [], shops: [] }; }
+}
+
+function api_saveMenu(list) {
+  try {
+    var sh = buildMenuSheet();
+    if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, MENU_HEAD.length).clearContent();
+    var rows = (list || []).filter(function (m) { return String(m.name || '').trim(); })
+      .map(function (m) {
+        return [String(m.shop || '').trim(), String(m.name).trim(),
+                Number(m.price || 0), Number(m.min || 0)];
+      });
+    if (rows.length) sh.getRange(2, 1, rows.length, MENU_HEAD.length).setValues(rows);
+    _menuCache = null;
+    SpreadsheetApp.flush();
+    return { ok: true, n: rows.length };
+  } catch (e) { logError('앱 메뉴저장', e); return { ok: false, msg: e.message }; }
+}
+
+/* ---------- 결제(매출) 등록 ---------- */
+
+function api_payment(resno) {
+  try {
+    var found = null;
+    readData().forEach(function (v) {
+      var o = rowToObj(v);
+      if (o.resno === String(resno)) found = o;
+    });
+    if (!found) return { ok: false, msg: '예약을 찾지 못했습니다.' };
+    var items = [], discount = 0, has = false, pay = '', staff = '', npay = 0;
+    readSlog().forEach(function (g) {
+      if (g.resno !== String(resno)) return;
+      has = true;
+      if (g.pay) pay = g.pay;
+      if (g.staff) staff = g.staff;
+      if (Number(g.npay) > npay) npay = Number(g.npay);
+      if (g.item === '할인') discount += -g.amount;
+      else items.push({ name: g.item, amount: g.amount });
+    });
+    if (!has && found.product) items.push({ name: found.product, amount: found.amount || 0 });
+    var menu = readMenu().filter(function (m) { return !m.shop || m.shop === found.shop; });
+    return { ok: true, booking: found, items: items, discount: discount, menu: menu, saved: has,
+             pay: pay, staff: staff || found.staff || '', npay: npay, feeRate: npayRate(),
+             payList: ['신용카드', '체크카드', '현금', '계좌이체', '네이버페이', '신용카드+네이버페이', '체크카드+네이버페이', '기타'],
+             staffList: cfgStr('담당자 명단', '').split(',').map(function (x) { return x.trim(); })
+                          .filter(function (x) { return x; }) };
+  } catch (e) { return { ok: false, msg: e.message }; }
+}
+
+function api_savePayment(p) {
+  try {
+    var resno = String((p && p.resno) || '').trim();
+    if (!resno) return { ok: false, msg: '예약번호가 없습니다.' };
+    var dataSh = sheetOf(SH.DATA);
+    var rows = readData();
+    var idx = -1, o = null;
+    for (var i = 0; i < rows.length; i++) {
+      if (String(rows[i][D.RESNO - 1]).trim() === resno) { idx = i + 2; o = rowToObj(rows[i]); break; }
+    }
+    if (idx < 0) return { ok: false, msg: '예약을 찾지 못했습니다.' };
+
+    var sh = buildSlogSheet();
+    var last = sh.getLastRow();
+    if (last > 1) {
+      var vals = sh.getRange(2, 1, last - 1, SLOG_HEAD.length).getValues();
+      for (var r = vals.length - 1; r >= 0; r--) {
+        if (String(vals[r][1]).trim() === resno) sh.deleteRow(r + 2);
+      }
+    }
+    var items = (p.items || []).filter(function (it) { return String(it.name || '').trim(); });
+    var disc = Number(p.discount || 0);
+    var pay = String(p.pay || '').trim();
+    var staff = String(p.staff || o.staff || '').trim();
+    var cid = String(o.custId || '');
+    var npay = Math.max(0, Number(p.npay || 0));
+    var total = 0, out = [], stamp = nowStr(), dt = toDate(o.date);
+    items.forEach(function (it) {
+      var amt = Number(it.amount || 0);
+      total += amt;
+      out.push([stamp, resno, o.shop, cid, o.name, dt, String(it.name).trim(), amt, pay, staff, '']);
+    });
+    if (disc) {
+      total -= disc;
+      out.push([stamp, resno, o.shop, cid, o.name, dt, '할인', -disc, pay, staff, '']);
+    }
+    /* 네이버 결제액은 예약당 한 번만 (첫 줄에) 적습니다 */
+    if (out.length && npay) out[0][10] = npay;
+    if (out.length) sh.getRange(sh.getLastRow() + 1, 1, out.length, SLOG_HEAD.length).setValues(out);
+
+    dataSh.getRange(idx, D.PAID).setValue(total);
+    dataSh.getRange(idx, D.STATUS).setValue(STATUS.DONE);
+    if (staff) dataSh.getRange(idx, D.STAFF).setValue(staff);
+    SpreadsheetApp.flush();
+    recomputeCustomerStats();
+    refreshHome();
+    return { ok: true, total: total };
+  } catch (e) { logError('앱 결제등록', e); return { ok: false, msg: e.message }; }
+}
+
+/* ---------- 동의서 양식·기록 ---------- */
+
+var FORM_HEAD = ['샵', '양식명', '순서', '문항', '유형', '보기', '필수'];
+var CONSENT_HEAD = ['등록시각', '고객ID', '고객명', '샵', '양식명', '응답', '서명링크'];
+
+function buildFormSheet() {
+  var sh = getOrCreateSheet(SH.FORM);
+  if (headerMismatch(sh, FORM_HEAD)) {
+    sh.clear();
+    sh.getRange(1, 1, 1, FORM_HEAD.length).setValues([FORM_HEAD])
+      .setFontWeight('bold').setBackground('#1F3864').setFontColor('#ffffff');
+    sh.setFrozenRows(1);
+    [140, 170, 60, 420, 90, 420, 70].forEach(function (x, i) { sh.setColumnWidth(i + 1, x); });
+  }
+  return sh;
+}
+
+function buildConsentSheet() {
+  var sh = getOrCreateSheet(SH.CONSENT);
+  if (headerMismatch(sh, CONSENT_HEAD)) {
+    sh.clear();
+    sh.getRange(1, 1, 1, CONSENT_HEAD.length).setValues([CONSENT_HEAD])
+      .setFontWeight('bold').setBackground('#7B3F61').setFontColor('#ffffff');
+    sh.setFrozenRows(1);
+    [150, 90, 100, 140, 160, 520, 220].forEach(function (x, i) { sh.setColumnWidth(i + 1, x); });
+  }
+  return sh;
+}
+
+/* ==================== 선불·포인트 이력 ==================== */
+
+function buildPpSheet() {
+  var sh = getOrCreateSheet(SH.PPLOG);
+  if (headerMismatch(sh, PP_HEAD)) {
+    sh.clear();
+    sh.getRange(1, 1, 1, PP_HEAD.length).setValues([PP_HEAD])
+      .setFontWeight('bold').setBackground('#8A5B2A').setFontColor('#ffffff');
+    sh.setFrozenRows(1);
+    [150, 90, 100, 80, 80, 110, 110, 240, 100].forEach(function (x, i) { sh.setColumnWidth(i + 1, x); });
+  }
+  return sh;
+}
+
+function readPp(custId) {
+  var sh = buildPpSheet();
+  var last = sh.getLastRow();
+  if (last < 2) return [];
+  return sh.getRange(2, 1, last - 1, PP_HEAD.length).getValues()
+    .filter(function (r) { return String(r[1] || '').trim(); })
+    .map(function (r) {
+      return { at: String(r[0]), custId: String(r[1]).trim(), name: String(r[2] || ''),
+               type: String(r[3] || ''), way: String(r[4] || ''),
+               amount: Number(r[5] || 0), left: Number(r[6] || 0),
+               memo: String(r[7] || ''), staff: String(r[8] || '') };
+    })
+    .filter(function (g) { return !custId || g.custId === String(custId).trim(); });
+}
+
+/* type: 선불 | 포인트   way: 충전 | 사용 | 조정 */
+function api_savePp(p) {
+  try {
+    var cid = String((p && p.custId) || '').trim();
+    if (!cid) return { ok: false, msg: '고객을 찾지 못했습니다.' };
+    var amt = Math.abs(Number(p.amount || 0));
+    if (!amt) return { ok: false, msg: '금액을 넣어주세요.' };
+    var type = (p.type === '포인트') ? '포인트' : '선불';
+    var way = (p.way === '사용') ? '사용' : (p.way === '조정' ? '조정' : '충전');
+
+    var sh = sheetOf(SH.CUST);
+    var rows = readCustomers();
+    var idx = -1;
+    for (var i = 0; i < rows.length; i++) {
+      if (String(rows[i][C.ID - 1]).trim() === cid) { idx = i; break; }
+    }
+    if (idx < 0) return { ok: false, msg: '고객을 찾지 못했습니다.' };
+
+    var col = (type === '포인트') ? C.POINT : C.PREPAID;
+    var cur = Number(rows[idx][col - 1] || 0);
+    var delta = (way === '사용') ? -amt : amt;
+    if (way === '조정') delta = amt - cur;
+    var next = cur + delta;
+    if (next < 0) return { ok: false, msg: '잔액보다 많이 쓸 수 없습니다. (현재 ' + cur + '원)' };
+
+    sheetOf(SH.CUST).getRange(idx + 2, col).setValue(next);
+    buildPpSheet().appendRow([nowStr(), cid, rows[idx][C.NAME - 1], type, way,
+                              (way === '조정' ? delta : amt), next,
+                              p.memo || '', p.staff || '']);
+    SpreadsheetApp.flush();
+    return { ok: true, left: next, type: type };
+  } catch (e) { logError('앱 선불포인트', e); return { ok: false, msg: e.message }; }
+}
+
+function api_ppLog(custId) {
+  try {
+    var list = readPp(custId);
+    list.reverse();
+    return { ok: true, list: list.slice(0, 60) };
+  } catch (e) { return { ok: false, msg: e.message, list: [] }; }
+}
+
+/* ==================== 직원별 결산 ==================== */
+
+function staffList() {
+  return cfgStr('담당자 명단', '').split(',')
+    .map(function (x) { return x.trim(); })
+    .filter(function (x) { return x; });
+}
+
+function incentiveMap() {
+  /* 설정: "원장:30,김실장:20"  (퍼센트) */
+  var raw = String(cfgStr('직원 인센티브(%)', '')).trim();
+  var m = {};
+  raw.split(',').forEach(function (pair) {
+    var kv = pair.split(':');
+    if (kv.length === 2 && kv[0].trim()) m[kv[0].trim()] = Number(kv[1]) || 0;
+  });
+  return m;
+}
+
+function api_staffReport(from, to, shop) {
+  try {
+    var t = ymd(new Date());
+    var f = ymd(toDate(from) || toDate(t.slice(0, 8) + '01'));
+    var e = ymd(toDate(to) || toDate(t));
+    var inc = incentiveMap();
+    var PAYS = ['카드', '현금', '계좌이체', '네이버페이', '기타'];
+
+    var by = {};
+    function slot(name) {
+      if (!by[name]) {
+        by[name] = { staff: name, total: 0, n: 0, cust: {}, pay: {}, items: {} };
+        PAYS.forEach(function (k) { by[name].pay[k] = 0; });
+        by[name].pay['미입력'] = 0;
+      }
+      return by[name];
+    }
+
+    readSlog().forEach(function (g) {
+      if (!g.date || g.date < f || g.date > e) return;
+      if (shop && g.shop !== shop) return;
+      var name = g.staff || '지정 안 함';
+      var b = slot(name);
+      b.total += g.amount;
+      if (g.item !== '할인') {
+        b.n++;
+        b.items[g.item] = (b.items[g.item] || 0) + g.amount;
+      }
+      var pk = g.pay && PAYS.indexOf(g.pay) >= 0 ? g.pay : (g.pay ? '기타' : '미입력');
+      b.pay[pk] += g.amount;
+      if (g.custId) b.cust[g.custId] = true;
+    });
+
+    var list = Object.keys(by).map(function (k) {
+      var b = by[k];
+      var rate = inc[k] || 0;
+      return { staff: b.staff, total: b.total, n: b.n,
+               customers: Object.keys(b.cust).length,
+               pay: b.pay, rate: rate,
+               incentive: Math.floor(b.total * rate / 100),
+               top: Object.keys(b.items).map(function (i) { return { name: i, total: b.items[i] }; })
+                      .sort(function (x, y) { return y.total - x.total; }).slice(0, 5) };
+    }).sort(function (a, b) { return b.total - a.total; });
+
+    var grand = 0; list.forEach(function (x) { grand += x.total; });
+    return { ok: true, from: f, to: e, shop: shop || '', list: list, total: grand,
+             pays: PAYS.concat(['미입력']),
+             staffList: staffList(), shops: shops().map(function (x) { return x.name; }) };
+  } catch (e) { logError('앱 직원결산', e); return { ok: false, msg: e.message }; }
+}
+
+/* ==================== 이용률 분석 ==================== */
+
+function api_usage(from, to, shop) {
+  try {
+    var t = ymd(new Date());
+    var f = ymd(toDate(from) || toDate(shiftDate(t, -29)));
+    var e = ymd(toDate(to) || toDate(t));
+
+    function hourOf(v, dflt) {
+      var m = String(v == null ? '' : v).match(/(\d{1,2})\s*[:시]/);
+      if (m) return Number(m[1]);
+      var n = Number(String(v).replace(/[^0-9]/g, ''));
+      return n > 0 && n < 24 ? n : dflt;
+    }
+    var openH = hourOf(cfgStr('영업 시작시각', '10:00'), 10);
+    var closeH = hourOf(cfgStr('영업 종료시각', '20:00'), 20) + 1;
+    if (closeH <= openH) closeH = openH + 1;
+    if (closeH > 24) closeH = 24;
+
+    var grid = {}, dowTot = [0,0,0,0,0,0,0], hourTot = {}, dayCount = [0,0,0,0,0,0,0];
+    for (var h = openH; h < closeH; h++) hourTot[h] = 0;
+
+    var seenDay = {};
+    var cur = f;
+    while (cur <= e) {
+      var dd = toDate(cur);
+      dayCount[dd.getDay()]++;
+      cur = shiftDate(cur, 1);
+    }
+
+    var total = 0;
+    readData().map(rowToObj).forEach(function (o) {
+      if (!o.date || o.date < f || o.date > e) return;
+      if (o.status === STATUS.CANCEL) return;
+      if (shop && o.shop !== shop) return;
+      var d = toDate(o.date); if (!d) return;
+      var m = String(o.time || '').match(/(\d{1,2})\s*[:시]/);
+      var hh = m ? Number(m[1]) : -1;
+      if (hh < openH || hh >= closeH) hh = -1;
+      total++;
+      dowTot[d.getDay()]++;
+      if (hh >= 0) {
+        hourTot[hh]++;
+        var k = d.getDay() + '|' + hh;
+        grid[k] = (grid[k] || 0) + 1;
+      }
+      seenDay[o.date] = true;
+    });
+
+    var maxCell = 0;
+    Object.keys(grid).forEach(function (k) { if (grid[k] > maxCell) maxCell = grid[k]; });
+
+    var hours = [];
+    for (var h2 = openH; h2 < closeH; h2++) hours.push(h2);
+
+    return { ok: true, from: f, to: e, shop: shop || '',
+             open: openH, close: closeH, hours: hours,
+             grid: grid, maxCell: maxCell,
+             dow: dowTot, dowDays: dayCount, hourTot: hourTot,
+             total: total, busyDays: Object.keys(seenDay).length,
+             shops: shops().map(function (x) { return x.name; }) };
+  } catch (e) { logError('앱 이용률', e); return { ok: false, msg: e.message }; }
+}
+
+/* ==================== 간단일정 (시간 막기) ==================== */
+
+function buildBlockSheet() {
+  var sh = getOrCreateSheet(SH.BLOCK);
+  if (headerMismatch(sh, BLOCK_HEAD)) {
+    sh.clear();
+    sh.getRange(1, 1, 1, BLOCK_HEAD.length).setValues([BLOCK_HEAD])
+      .setFontWeight('bold').setBackground('#5B6B7B').setFontColor('#ffffff');
+    sh.setFrozenRows(1);
+    [90, 140, 100, 80, 80, 220, 260, 150].forEach(function (x, i) { sh.setColumnWidth(i + 1, x); });
+  }
+  return sh;
+}
+
+function readBlocks() {
+  var sh = buildBlockSheet();
+  var last = sh.getLastRow();
+  if (last < 2) return [];
+  return sh.getRange(2, 1, last - 1, BLOCK_HEAD.length).getValues()
+    .filter(function (r) { return String(r[0] || '').trim(); })
+    .map(function (r) {
+      return { id: String(r[0]), shop: String(r[1] || ''), date: ymd(r[2]),
+               start: hhmm(r[3]), end: hhmm(r[4]),
+               title: String(r[5] || ''), memo: String(r[6] || '') };
+    });
+}
+
+function hhmm(v) {
+  if (v instanceof Date) return fmt(v, 'HH:mm');
+  var t = String(v || '');
+  var m = t.match(/(\d{1,2})\s*[:시]\s*(\d{1,2})?/);
+  if (!m) return '';
+  var h = Number(m[1]), mi = Number(m[2] || 0);
+  if (/오후|PM|pm/.test(t) && h < 12) h += 12;
+  if (/오전|AM|am/.test(t) && h === 12) h = 0;
+  if (h > 23) h = 23;
+  return ('0' + h).slice(-2) + ':' + ('0' + mi).slice(-2);
+}
+
+function api_blocks(from, to) {
+  try {
+    var f = ymd(toDate(from)), t = ymd(toDate(to || from));
+    var list = readBlocks().filter(function (b) { return b.date >= f && b.date <= t; });
+    list.sort(function (a, b) {
+      if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+      return String(a.start).localeCompare(String(b.start));
+    });
+    return { ok: true, list: list, shops: shops().map(function (x) { return x.name; }) };
+  } catch (e) { return { ok: false, msg: e.message, list: [] }; }
+}
+
+function api_saveBlock(p) {
+  try {
+    var date = ymd(toDate(p && p.date));
+    if (!date) return { ok: false, msg: '날짜를 골라주세요.' };
+    var title = String((p && p.title) || '').trim() || '일정';
+    var st = hhmm(p.start), en = hhmm(p.end);
+    if (!st) return { ok: false, msg: '시작 시간을 넣어주세요.' };
+    if (en && en <= st) return { ok: false, msg: '끝 시간이 시작보다 빨라요.' };
+    var sh = buildBlockSheet();
+
+    if (p.id) {
+      var rows = sh.getRange(2, 1, Math.max(sh.getLastRow() - 1, 1), BLOCK_HEAD.length).getValues();
+      for (var i = 0; i < rows.length; i++) {
+        if (String(rows[i][0]) === String(p.id)) {
+          sh.getRange(i + 2, 2, 1, 6).setValues([[p.shop || '', date, st, en, title, p.memo || '']]);
+          SpreadsheetApp.flush();
+          return { ok: true, id: p.id };
+        }
+      }
+      return { ok: false, msg: '일정을 찾지 못했습니다.' };
+    }
+
+    var id = 'B' + Date.now();
+    sh.appendRow([id, p.shop || '', date, st, en, title, p.memo || '', nowStr()]);
+    SpreadsheetApp.flush();
+    return { ok: true, id: id };
+  } catch (e) { logError('앱 일정저장', e); return { ok: false, msg: e.message }; }
+}
+
+function api_deleteBlock(id) {
+  try {
+    var sh = buildBlockSheet();
+    var last = sh.getLastRow();
+    if (last < 2) return { ok: false, msg: '일정이 없습니다.' };
+    var rows = sh.getRange(2, 1, last - 1, BLOCK_HEAD.length).getValues();
+    for (var i = 0; i < rows.length; i++) {
+      if (String(rows[i][0]) === String(id)) {
+        toTrash('간단일정', id, rows[i][5] + ' ' + ymd(rows[i][2]), rows[i]);
+        sh.deleteRow(i + 2);
+        SpreadsheetApp.flush();
+        return { ok: true };
+      }
+    }
+    return { ok: false, msg: '일정을 찾지 못했습니다.' };
+  } catch (e) { return { ok: false, msg: e.message }; }
+}
+
+/* ==================== 휴지통 ==================== */
+
+function buildTrashSheet() {
+  var sh = getOrCreateSheet(SH.TRASH);
+  if (headerMismatch(sh, TRASH_HEAD)) {
+    sh.clear();
+    sh.getRange(1, 1, 1, TRASH_HEAD.length).setValues([TRASH_HEAD])
+      .setFontWeight('bold').setBackground('#7A7A7A').setFontColor('#ffffff');
+    sh.setFrozenRows(1);
+    [150, 100, 130, 320, 600].forEach(function (x, i) { sh.setColumnWidth(i + 1, x); });
+  }
+  return sh;
+}
+
+function toTrash(kind, key, summary, rowArr) {
+  try {
+    var sh = buildTrashSheet();
+    var payload = JSON.stringify((rowArr || []).map(function (v) {
+      return (v instanceof Date) ? fmt(v, 'yyyy-MM-dd HH:mm:ss') : v;
+    }));
+    if (payload.length > 45000) payload = payload.slice(0, 45000);
+    sh.appendRow([nowStr(), kind, String(key), String(summary || ''), payload]);
+    purgeTrash();
+  } catch (e) { logError('휴지통 저장', e); }
+}
+
+function purgeTrash() {
+  var sh = buildTrashSheet();
+  var last = sh.getLastRow();
+  if (last < 2) return 0;
+  var vals = sh.getRange(2, 1, last - 1, 1).getValues();
+  var cut = ymd(shiftDate(ymd(new Date()), -30));
+  var del = 0;
+  for (var i = vals.length - 1; i >= 0; i--) {
+    var d = ymd(toDate(String(vals[i][0]).slice(0, 10)));
+    if (d && d < cut) { sh.deleteRow(i + 2); del++; }
+  }
+  return del;
+}
+
+function api_trash(kind) {
+  try {
+    var sh = buildTrashSheet();
+    var last = sh.getLastRow();
+    if (last < 2) return { ok: true, list: [], kinds: [] };
+    var v = sh.getRange(2, 1, last - 1, TRASH_HEAD.length).getValues();
+    var kinds = {};
+    var out = [];
+    v.forEach(function (r, i) {
+      kinds[String(r[1])] = true;
+      if (kind && String(r[1]) !== kind) return;
+      out.push({ row: i + 2, at: String(r[0]), kind: String(r[1]),
+                 key: String(r[2]), summary: String(r[3]) });
+    });
+    out.reverse();
+    return { ok: true, list: out.slice(0, 100), total: out.length,
+             kinds: Object.keys(kinds) };
+  } catch (e) { return { ok: false, msg: e.message, list: [] }; }
+}
+
+function api_restoreTrash(rowNum) {
+  try {
+    var sh = buildTrashSheet();
+    var r = Number(rowNum);
+    if (!(r >= 2) || r > sh.getLastRow()) return { ok: false, msg: '기록을 찾지 못했습니다.' };
+    var v = sh.getRange(r, 1, 1, TRASH_HEAD.length).getValues()[0];
+    var kind = String(v[1]);
+    var arr;
+    try { arr = JSON.parse(v[4]); } catch (e) { return { ok: false, msg: '내용이 깨져 복구할 수 없습니다.' }; }
+    if (!(arr instanceof Array)) return { ok: false, msg: '내용이 깨져 복구할 수 없습니다.' };
+
+    var target = null;
+    if (kind === '고객') target = buildCustomerSheet();
+    else if (kind === '예약') target = sheetOf(SH.DATA);
+    else if (kind === '매출') target = buildSlogSheet();
+    else if (kind === '간단일정') target = buildBlockSheet();
+    else if (kind === '수입지출') target = buildCashSheet();
+    if (!target) return { ok: false, msg: '복구할 수 없는 종류입니다.' };
+
+    target.appendRow(arr);
+    sh.deleteRow(r);
+    SpreadsheetApp.flush();
+    return { ok: true, kind: kind };
+  } catch (e) { logError('휴지통 복구', e); return { ok: false, msg: e.message }; }
+}
+
+/* ==================== 수입·지출 ==================== */
+
+function buildCashSheet() {
+  var sh = getOrCreateSheet(SH.CASH);
+  if (headerMismatch(sh, CASH_HEAD)) {
+    sh.clear();
+    sh.getRange(1, 1, 1, CASH_HEAD.length).setValues([CASH_HEAD])
+      .setFontWeight('bold').setBackground('#2F5D50').setFontColor('#ffffff');
+    sh.setFrozenRows(1);
+    [90, 100, 70, 120, 240, 110, 110, 130, 240, 150].forEach(function (x, i) { sh.setColumnWidth(i + 1, x); });
+  }
+  return sh;
+}
+
+function CASH_ACCOUNTS() {
+  var v = cfgStr('지출 계정 목록', '재료비,월세,관리비,공과금,마케팅비,광고비,수수료,인건비,장비,교육,기타');
+  return String(v).split(',').map(function (x) { return x.trim(); }).filter(function (x) { return x; });
+}
+
+function readCash() {
+  var sh = buildCashSheet();
+  var last = sh.getLastRow();
+  if (last < 2) return [];
+  return sh.getRange(2, 1, last - 1, CASH_HEAD.length).getValues()
+    .filter(function (r) { return String(r[0] || '').trim(); })
+    .map(function (r, i) {
+      return { row: i + 2, id: String(r[0]), date: ymd(r[1]), kind: String(r[2] || ''),
+               acct: String(r[3] || ''), note: String(r[4] || ''),
+               amount: Number(r[5] || 0), pay: String(r[6] || ''),
+               shop: String(r[7] || ''), memo: String(r[8] || '') };
+    });
+}
+
+function api_cash(from, to) {
+  try {
+    var t = ymd(new Date());
+    var f = ymd(toDate(from) || toDate(t.slice(0, 8) + '01'));
+    var e = ymd(toDate(to) || toDate(t));
+    var all = readCash().filter(function (g) { return g.date >= f && g.date <= e; });
+    var inc = 0, exp = 0, byAcct = {};
+    all.forEach(function (g) {
+      if (g.kind === '수입') inc += g.amount;
+      else {
+        exp += g.amount;
+        byAcct[g.acct || '기타'] = (byAcct[g.acct || '기타'] || 0) + g.amount;
+      }
+    });
+    var cur = salesSum(readSlog(), f, e, '');
+    var sales = cur.total, fee = cur.fee;
+    all.sort(function (a, b) { return a.date < b.date ? 1 : (a.date > b.date ? -1 : 0); });
+    return { ok: true, from: f, to: e, income: inc, expense: exp,
+             sales: sales, fee: fee, feeRate: npayRate(),
+             naverFee: cur.naverFee, cardFee: cur.cardFee,
+             creditRate: creditRate(), debitRate: debitRate(), npayMixed: cur.npayMixed,
+             net: sales - fee + inc - exp,
+             byAcct: byAcct, list: all.slice(0, 200),
+             accounts: CASH_ACCOUNTS(),
+             payList: ['카드', '현금', '계좌이체', '자동이체', '기타'],
+             shops: shops().map(function (x) { return x.name; }) };
+  } catch (e) { logError('앱 수입지출', e); return { ok: false, msg: e.message }; }
+}
+
+function api_saveCash(p) {
+  try {
+    var date = ymd(toDate(p && p.date));
+    if (!date) return { ok: false, msg: '날짜를 골라주세요.' };
+    var amt = Number(p.amount || 0);
+    if (!amt) return { ok: false, msg: '금액을 넣어주세요.' };
+    var kind = (p.kind === '수입') ? '수입' : '지출';
+    var sh = buildCashSheet();
+    var id = 'X' + Date.now();
+    sh.appendRow([id, toDate(date), kind, p.acct || '', p.note || '',
+                  Math.abs(amt), p.pay || '', p.shop || '', p.memo || '', nowStr()]);
+    SpreadsheetApp.flush();
+    return { ok: true, id: id };
+  } catch (e) { logError('앱 수입지출저장', e); return { ok: false, msg: e.message }; }
+}
+
+function api_deleteCash(id) {
+  try {
+    var sh = buildCashSheet();
+    var last = sh.getLastRow();
+    if (last < 2) return { ok: false, msg: '내역이 없습니다.' };
+    var rows = sh.getRange(2, 1, last - 1, CASH_HEAD.length).getValues();
+    for (var i = 0; i < rows.length; i++) {
+      if (String(rows[i][0]) === String(id)) {
+        toTrash('수입지출', id, rows[i][2] + ' ' + rows[i][4] + ' ' + rows[i][5], rows[i]);
+        sh.deleteRow(i + 2);
+        SpreadsheetApp.flush();
+        return { ok: true };
+      }
+    }
+    return { ok: false, msg: '내역을 찾지 못했습니다.' };
+  } catch (e) { return { ok: false, msg: e.message }; }
+}
+
+/* ---------- 팅커뷰 고객 가져오기 (1회용) ---------- */
+
+function tinkerviewRows() { return []; } /* 이관용 개인정보 데이터 — 공개 저장소라 비움 */
+/* 팅커뷰 '담당자' 값(LIFE/YOUR/DRAW/메이크업클래스/닥뷰/웨딩)은 상품라인이라
+   샵 판별에만 쓰고, 원래 값은 태그로 남깁니다. */
+function lineToShop(line) {
+  var sl = shops();
+  function nm(i, d) { for (var k = 0; k < sl.length; k++) if (sl[k].idx === i) return sl[k].name; return d; }
+  var v = String(line || '').trim();
+  if (!v) return '';
+  if (v === '닥뷰' || v.indexOf('닥터') >= 0 || v.indexOf('반영구') >= 0) return nm(2, '닥터 뷰티랩');
+  return nm(1, '당신을 그리다');
+}
+
+function importTinkerview() {
+  var sh = buildCustomerSheet();
+  var existing = {};
+  readCustomers().forEach(function (v) {
+    var ph = onlyDigits(v[C.PHONE - 1]) || onlyDigits(v[C.SAFE - 1]);
+    if (ph) existing[ph] = v[C.ID - 1];
+    var nm = String(v[C.NAME - 1] || '').trim();
+    if (nm) existing['N:' + nm] = v[C.ID - 1];
+  });
+
+  var maxId = 0;
+  readCustomers().forEach(function (v) {
+    var n = Number(String(v[C.ID - 1]).replace(/[^0-9]/g, ''));
+    if (n > maxId) maxId = n;
+  });
+
+  var add = [], skip = 0;
+  tinkerviewRows().forEach(function (r) {
+    var name = r[0].trim(), phone = normPhone(r[1]);
+    var key = onlyDigits(phone);
+    if ((key && existing[key]) || (!key && existing['N:' + name])) { skip++; return; }
+    if (key) existing[key] = 1;
+
+    var line = r[2].trim();
+    var tags = [];
+    if (line) tags.push(line);
+    if (r[9].trim()) tags.push(r[9].trim());
+
+    var row = new Array(C_HEAD.length).fill('');
+    maxId++;
+    row[C.ID - 1]      = 'C' + ('0000' + maxId).slice(-4);
+    row[C.NAME - 1]    = name;
+    if (isSafePhone(phone)) row[C.SAFE - 1] = phone; else row[C.PHONE - 1] = phone;
+    row[C.SHOP - 1]    = lineToShop(line);
+    row[C.LAST - 1]    = r[7] ? toDate(r[7]) : '';
+    row[C.VISITS - 1]  = Number(r[4] || 0);
+    row[C.MEMO - 1]    = r[10] || '';
+    row[C.SOURCE - 1]  = '팅커뷰';
+    row[C.BIRTH - 1]   = r[8] ? toDate(r[8]) : '';
+    row[C.PREPAID - 1] = Number(r[5] || 0);
+    row[C.GRADE - 1]   = r[3].trim();
+    row[C.TAG - 1]     = tags.join(', ');
+    add.push(row);
+  });
+
+  if (add.length) {
+    var startRow = sh.getLastRow() + 1;
+    sh.getRange(startRow, 1, add.length, C_HEAD.length).setValues(add);
+    for (var q = 0; q < add.length; q++) {
+      var rr = startRow + q;
+      sh.getRange(rr, C.LEFT).setFormula('=IF($J' + rr + '="","",$J' + rr + '-$K' + rr + ')');
+    }
+    SpreadsheetApp.flush();
+  }
+  return { ok: true, added: add.length, skipped: skip };
+}
+
+function A_팅커뷰_고객_가져오기() {
+  var r = importTinkerview();
+  Logger.log('가져옴 ' + r.added + '명 / 이미 있어서 건너뜀 ' + r.skipped + '명');
+  return r;
+}
+
+/* ---------- 동의서 기본 문항 (팅커뷰 양식 그대로) ---------- */
+
+function defaultForms() {
+  var sl = shops();
+  function nm(i, dflt) {
+    for (var k = 0; k < sl.length; k++) if (sl[k].idx === i) return sl[k].name;
+    return dflt;
+  }
+  var S1 = nm(1, '당신을 그리다'), S2 = nm(2, '닥터 뷰티랩');
+  var F1 = '사전 상담지', F2 = '시술 동의서';
+  var L = [];
+  function q(shop, form, text, type, opts, need) {
+    L.push({ shop: shop, form: form, q: text, type: type, opts: opts || [], need: !!need });
+  }
+
+  /* ===== 당신을 그리다 · 사전 상담지 ===== */
+  q(S1, F1, '생년월일을 알려주세요. (예.1988년 12월 17일)', '단답', [], true);
+  q(S1, F1, '주소를 알려주세요 (예. 서울시 강서구)', '단답', [], false);
+  q(S1, F1, '해당 직업에 체크해주세요.', '단일선택',
+    ['사무직', '서비스직', '판매직', '전문직', '관리직', '군인', '무직/취준생'], false);
+  q(S1, F1, '방문 경로를 체크해주세요. (중복 가능)', '복수선택',
+    ['네이버 플레이스', '네이버 지도', '네이버 프로그램', '인스타그램', '블로그', '지인추천',
+     '유튜브(T1 오너선수,롯데백화점 등)'], false);
+  q(S1, F1, '검색 키워드 (서울 퍼스널컬러, 메이크업 컨설팅 직접 검색한 단어)', '단답', [], false);
+  q(S1, F1, '퍼스널컬러 진단/메이크업 컨설팅 경험', '복수선택',
+    ['퍼스널컬러 진단 처음이에요.', '퍼스널컬러 재진단이에요.',
+     '메이크업 수업 처음이에요.', '메이크업 수업 들어본 적 있어요.'], false);
+  q(S1, F1, "진단 받은 시기와 결과를 알려주세요. 첫 진단일 경우 '없음'", '단답', [], false);
+  q(S1, F1, '방문 목적이 무엇인가요? (예. 면접/웨딩 등 중요 일정, 이미지 변신)', '단답', [], false);
+  q(S1, F1, '가장 고민되는 부분을 체크해 주세요. 솔루션을 제안해 드립니다.', '복수선택',
+    ['피부톤에 딱 맞는 파운데이션 궁금해요', '색조 메이크업을 하면 촌스러워져요.',
+     '내 얼굴에 어울리는 눈썹이 궁금해요.', '눈화장을 하면 답답해보여요.',
+     '눈썹때문에 첫인상이 흐릿해보여요.', '이마 라인이 넓어서 얼굴이 커보여요.',
+     '가르마정수리가 비어보여서 신경쓰여요.', '얼굴이 작아보이는 윤곽화장 궁금해요.',
+     '나에게 어울리는 립 컬러 궁금해요.'], false);
+  q(S1, F1, '이미지 보완을 위해 당신을그리다 반영구 센터를 연계해 드립니다.', '복수선택',
+    ['※ 당일 예약 시 특별 혜택 적용', '퍼스널 브로우:자연스러운 눈썹 교정',
+     '탈모커버:두피채움으로 얻는 동안이미지', '헤어라인교정:작아보이는 얼굴윤곽 교정',
+     '퍼스널 립틴트:혈색있는 립 솔루션', '필요 없음'], false);
+  q(S1, F1, '요청 사항이나 고민되는 부분이 있다면 상세히 적어주세요.', '서술', [], false);
+  q(S1, F1, '\u26a0\ufe0f 컨설팅 보안 및 저작권 동의\n' +
+    '[당신을 그리다]의 컨설팅은 고유의 노하우가 담긴 지적 재산입니다. ' +
+    '원활한 서비스 제공을 위해 아래 사항에 대한 동의가 필요합니다.\n\n' +
+    '1. 본 컨설팅 과정에 대한 무단 음성 녹음 및 영상 녹화를 엄격히 금지합니다.\n\n' +
+    '2. 제공되는 진단 결과지 및 가이드 자료를 제3자에게 공유하거나 온라인상에 무단 배포할 수 없습니다.\n\n' +
+    '3. 위 사항 위반 시 관련 법적 책임이 발생할 수 있음을 확인하였습니다.\n\n' +
+    '본인은 위 내용을 충분히 숙지하였으며, 이에 동의합니다.', '동의', [], true);
+
+  /* ===== 닥터 뷰티랩 · 시술 동의서 ===== */
+  q(S2, F2, '생년월일을 작성해주세요. (예.1988년 12월 17일)', '단답', [], true);
+  q(S2, F2, '방문 경로를 체크해주세요.', '복수선택',
+    ['네이버 플레이스', '네이버 지도', '네이버 블로그', '인스타그램', '공식 홈페이지', '지인 소개'], false);
+  q(S2, F2, '과거 눈썹 문신 경험이 있으신가요? (예. 총 2회, 리터치 포함 4회)', '단답', [], false);
+  q(S2, F2, '민감성 피부 혹은 예민한 피부 타입이신가요?', '단일선택', ['예', '아니오'], false);
+  q(S2, F2, '피부 질환이나 알레르기가 있으신가요? (켈로이드,묘기증,금속 알러지 등)', '복수선택',
+    ['켈로이드', '아토피, 지루성 피부염, 건선', '헤르페스 (단순포진)',
+     '간염 및 혈액 매개 감염 질환', '피부묘기증', '금속 알러지', '없음'], false);
+  q(S2, F2, '현재 앓고 있는 질환이 있으신가요? (예. 당뇨, 고혈압, 임신, 없음)', '단답', [], false);
+  q(S2, F2, '현재 복용 중인 약물이 있으신가요?', '복수선택',
+    ['항응고제 / 아스피린', '여드름 치료제 (이소트레티노인)', '면역억제제 / 스테로이드',
+     '오메가3, 고용량 비타민 E', '기타 (꼭 말씀해주세요!)'], false);
+  q(S2, F2, '기타 특이사항이 있으면 알려주세요.', '서술', [], false);
+  q(S2, F2, '시술 동의사항\n' +
+    '1. 시술 과정 중 전후 사진 및 영상 촬영이 이루어질 수 있으며, 촬영된 자료는 우선적으로 시술 기록 ' +
+    '보관을 목적으로 진행되며, 이를 통해 시술 전후의 상태를 정확히 관리하고 추후 관리에 도움을 ' +
+    '드리고자 합니다. 필요시 SNS를 통한 업로드될 수 있으며, 이에 동의하지 않으실 경우 시술 전에 ' +
+    '미리 말씀해 주시면 감사하겠습니다.\n\n' +
+    '2. 본인은 상기 시술을 시행하기에 앞서 매우 드물게 특이 체질 등으로 예측할 수 없는 부작용과 ' +
+    '후유증이 발생될 가능성이 있는 점을 염두에 두며 시술 관련 안내에 대해 구체적으로 충분히 ' +
+    '안내받았음을 확인합니다. 본인이 지침 위반하여 발생하는 문제에 대해서 업체는 책임지지 않습니다. ' +
+    '본인은 시술에 자발적 동의하며, 시술 결과에 대해 사업자의 객관적 중대한 책임 외 이의 제기하지 ' +
+    '않음을 확인합니다.\n\n' +
+    '3. 개인정보의 제공 및 활용에 동의합니다.\n' +
+    '(수집한 개인 정보 항목 : 이름, 전화번호, 생년월일 등 기재된 사항)', '동의', [], true);
+
+  return L;
+}
+
+function seedForms(force) {
+  var sh = buildFormSheet();
+  if (!force && sh.getLastRow() > 1) return 0;
+  if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, FORM_HEAD.length).clearContent();
+  var rows = defaultForms().map(function (f, i) {
+    return [f.shop, f.form, i + 1, f.q, f.type, (f.opts || []).join(' | '), f.need ? 'Y' : ''];
+  });
+  sh.getRange(2, 1, rows.length, FORM_HEAD.length).setValues(rows);
+  sh.getRange(2, 1, rows.length, FORM_HEAD.length).setVerticalAlignment('top').setWrap(true);
+  SpreadsheetApp.flush();
+  return rows.length;
+}
+
+function A_동의서문항_기본값으로_다시만들기() {
+  var n = seedForms(true);
+  Logger.log('동의서 문항 ' + n + '개를 넣었습니다.');
+  return n;
+}
+
+function readForms() {
+  var sh = buildFormSheet();
+  var last = sh.getLastRow();
+  if (last < 2) return [];
+  return sh.getRange(2, 1, last - 1, FORM_HEAD.length).getValues()
+    .filter(function (r) { return String(r[3] || '').trim(); })
+    .map(function (r) {
+      return { shop: String(r[0] || '').trim(), form: String(r[1] || '').trim(),
+               order: Number(r[2] || 0), q: String(r[3]).trim(),
+               type: String(r[4] || '단답').trim(),
+               opts: String(r[5] || '').split('|').map(function (x) { return x.trim(); })
+                       .filter(function (x) { return x; }),
+               need: String(r[6] || '') === 'Y' };
+    })
+    .sort(function (a, b) { return a.order - b.order; });
+}
+
+function api_forms(shop) {
+  try {
+    seedForms(false);
+    var all = readForms();
+    var list = shop ? all.filter(function (f) { return !f.shop || f.shop === shop; }) : all;
+    return { ok: true, list: list, all: all,
+             shops: shops().map(function (x) { return x.name; }),
+             types: ['단일선택', '복수선택', '단답', '서술', '안내', '동의'] };
+  } catch (e) { return { ok: false, msg: e.message, list: [], all: [] }; }
+}
+
+function api_saveForms(list) {
+  try {
+    var sh = buildFormSheet();
+    if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, FORM_HEAD.length).clearContent();
+    var rows = (list || []).filter(function (f) { return String(f.q || '').trim(); })
+      .map(function (f, i) {
+        return [String(f.shop || '').trim(), String(f.form || '상담지').trim(), i + 1,
+                String(f.q).trim(), String(f.type || '단답').trim(),
+                (f.opts || []).join(' | '), f.need ? 'Y' : ''];
+      });
+    if (rows.length) sh.getRange(2, 1, rows.length, FORM_HEAD.length).setValues(rows);
+    SpreadsheetApp.flush();
+    return { ok: true, n: rows.length };
+  } catch (e) { logError('앱 양식저장', e); return { ok: false, msg: e.message }; }
+}
+
+function api_saveConsent(p) {
+  try {
+    var cid = String((p && p.custId) || '').trim();
+    if (!cid) return { ok: false, msg: '고객을 찾지 못했습니다.' };
+    var cust = api_customer(cid);
+    if (!cust.ok) return { ok: false, msg: '고객을 찾지 못했습니다.' };
+    var c = cust.customer;
+    var url = '';
+    if (p.sign) {
+      var f = savePhotoToCustomer(cid, '동의서', p.sign, '서명_' + fmt(new Date(), 'yyyyMMdd_HHmmss') + '.png');
+      url = f.url || '';
+    }
+    var lines = (p.answers || []).map(function (a) {
+      return '· ' + a.q + ' → ' + (a.v === true ? '동의' : (a.v === false ? '동의안함' : String(a.v || '')));
+    }).join('\n');
+    buildConsentSheet().appendRow([nowStr(), cid, c.name, p.shop || c.shop || '',
+                                   p.form || '상담지', lines, url]);
+    SpreadsheetApp.flush();
+    return { ok: true, url: url };
+  } catch (e) { logError('앱 동의서저장', e); return { ok: false, msg: e.message }; }
+}
+
+function api_consents(custId) {
+  try {
+    var sh = buildConsentSheet();
+    var last = sh.getLastRow();
+    if (last < 2) return { ok: true, list: [] };
+    var out = [];
+    sh.getRange(2, 1, last - 1, CONSENT_HEAD.length).getValues().forEach(function (r) {
+      if (String(r[1] || '').trim() !== String(custId).trim()) return;
+      out.push({ at: String(r[0] || ''), shop: String(r[3] || ''), form: String(r[4] || ''),
+                 body: String(r[5] || ''), url: String(r[6] || '') });
+    });
+    out.reverse();
+    return { ok: true, list: out };
+  } catch (e) { return { ok: false, msg: e.message, list: [] }; }
+}
+
+/* ---------- 사진 (시술 전·후) ---------- */
+
+function savePhotoToCustomer(custId, kind, dataUrl, name) {
+  var url = ensureCustomerFolder(String(custId));
+  var id = String(url).match(/folders\/([^/?]+)/);
+  if (!id) throw new Error('사진 폴더를 찾지 못했습니다.');
+  var root = DriveApp.getFolderById(id[1]);
+  var subs = root.getFoldersByName(kind);
+  var sub = subs.hasNext() ? subs.next() : root.createFolder(kind);
+  var m = String(dataUrl || '').match(/^data:([^;]+);base64,(.+)$/);
+  if (!m) throw new Error('사진 형식을 읽지 못했습니다.');
+  var blob = Utilities.newBlob(Utilities.base64Decode(m[2]), m[1], name || ('photo_' + Date.now()));
+  var file = sub.createFile(blob);
+  return { url: file.getUrl(), folder: sub.getUrl() };
+}
+
+function api_uploadPhoto(p) {
+  try {
+    if (!p || !p.custId || !p.data) return { ok: false, msg: '사진이 없습니다.' };
+    var kind = (p.kind === '후') ? '시술후' : '시술전';
+    var name = kind + '_' + fmt(new Date(), 'yyyyMMdd_HHmmss') + '.jpg';
+    var r = savePhotoToCustomer(p.custId, kind, p.data, name);
+    return { ok: true, url: r.url, folder: r.folder, kind: kind };
+  } catch (e) { logError('앱 사진업로드', e); return { ok: false, msg: e.message }; }
+}
+
+/* ---------- 문자 발송 내역 ---------- */
+
+function api_sendLog(limit) {
+  try {
+    var sh = sheetOf(SH.LOG);
+    var last = sh.getLastRow();
+    if (last < 2) return { ok: true, list: [], total: 0 };
+    var n = Math.min(Number(limit) || 60, last - 1);
+    var v = sh.getRange(last - n + 1, 1, n, L_HEAD.length).getValues();
+    var out = v.map(function (r) {
+      return { at: String(r[0] || ''), resno: String(r[1] || ''), shop: String(r[2] || ''),
+               name: String(r[3] || ''), phone: String(r[4] || ''), type: String(r[5] || ''),
+               ch: String(r[6] || ''), result: String(r[7] || ''),
+               msg: String(r[8] || '').slice(0, 400) };
+    });
+    out.reverse();
+    return { ok: true, list: out, total: last - 1 };
+  } catch (e) { return { ok: false, msg: e.message, list: [], total: 0 }; }
+}
+
+/* ---------- 매출 분석 ---------- */
+
+function dayDiff(a, b) { return Math.round((toDate(b) - toDate(a)) / 86400000); }
+function shiftDate(d, days) {
+  var t = toDate(d); t.setDate(t.getDate() + days); return ymd(t);
+}
+
+/* ---------- 네이버 결제 수수료 ---------- */
+
+function rateOf(key, dflt) {
+  var n = parseFloat(String(cfg(key, dflt)).replace(/[^0-9.]/g, ''));
+  return (isNaN(n) || n < 0) ? 0 : n;
+}
+/* 네이버 정산 수수료율(%). 일반예약상품 1.98 / 주문상품 0.88 (VAT 포함) */
+function npayRate() { return rateOf('네이버 수수료율(%)', '1.98'); }
+/* 카드 수수료율(%). 연매출 3억 이하 우대: 신용 0.40 / 체크 0.15 */
+function creditRate() { return rateOf('신용카드 수수료율(%)', '0.40'); }
+function debitRate()  { return rateOf('체크카드 수수료율(%)', '0.15'); }
+function cardRateOf(pay) {
+  var p = String(pay || '');
+  if (p.indexOf('카드') < 0) return 0;
+  return (p.indexOf('체크') >= 0) ? debitRate() : creditRate();
+}
+function npayFee(base) { return Math.round(Number(base || 0) * npayRate() / 100); }
+
+/* 예약 단위로 수수료를 계산합니다.
+   - 네이버 단독: 전액에 네이버 요율
+   - 카드 단독: 전액에 카드 요율 (체크면 체크 요율)
+   - 섞인 결제: 네이버결제액을 적었으면 나눠서, 안 적었으면 빼고 mixed 로 알려줍니다 */
+function feeOf(byRes) {
+  var r = { naverBase: 0, cardBase: 0, naverFee: 0, cardFee: 0, fee: 0, mixed: 0 };
+  Object.keys(byRes).forEach(function (k) {
+    var b = byRes[k];
+    var amt = Number(b.amount || 0), np = Number(b.npay || 0);
+    var pay = String(b.pay || '');
+    var hasN = pay.indexOf('네이버') >= 0, hasC = pay.indexOf('카드') >= 0;
+    var cr = cardRateOf(pay);
+    if (hasN && hasC) {
+      if (np <= 0) { r.mixed++; return; }
+      var cardPart = Math.max(0, amt - np);
+      r.naverBase += np;  r.naverFee += Math.round(np * npayRate() / 100);
+      r.cardBase  += cardPart; r.cardFee += Math.round(cardPart * cr / 100);
+    } else if (hasN) {
+      var nb = np > 0 ? np : amt;
+      r.naverBase += nb; r.naverFee += Math.round(nb * npayRate() / 100);
+    } else if (hasC) {
+      r.cardBase += amt; r.cardFee += Math.round(amt * cr / 100);
+    }
+  });
+  r.fee = r.naverFee + r.cardFee;
+  return r;
+}
+
+function salesSum(rows, from, to, shop) {
+  var res = { total: 0, count: 0, cust: {}, byShop: {}, byItem: {}, byDow: [0,0,0,0,0,0,0],
+              byPay: {}, byDay: {}, list: [] };
+  var byRes = {};
+  rows.forEach(function (g) {
+    if (!g.date || g.date < from || g.date > to) return;
+    if (shop && g.shop !== shop) return;
+    res.total += g.amount;
+    res.byShop[g.shop] = (res.byShop[g.shop] || 0) + g.amount;
+    var ik = g.shop + '|' + g.item;
+    if (!res.byItem[ik]) res.byItem[ik] = { shop: g.shop, name: g.item, total: 0, n: 0 };
+    res.byItem[ik].total += g.amount;
+    if (g.item !== '할인') res.byItem[ik].n++;
+    var dt = toDate(g.date);
+    if (dt) res.byDow[dt.getDay()] += g.amount;
+    res.byDay[g.date] = (res.byDay[g.date] || 0) + g.amount;
+    var pk = g.pay || '미입력';
+    res.byPay[pk] = (res.byPay[pk] || 0) + g.amount;
+    if (g.custId) res.cust[g.custId] = (res.cust[g.custId] || 0) + 1;
+    if (!byRes[g.resno]) {
+      byRes[g.resno] = { resno: g.resno, date: g.date, shop: g.shop, name: g.name,
+                         staff: g.staff, pay: g.pay, items: [], amount: 0, npay: 0 };
+      res.list.push(byRes[g.resno]);
+    }
+    if (g.item !== '할인') byRes[g.resno].items.push(g.item);
+    byRes[g.resno].amount += g.amount;
+    if (Number(g.npay) > Number(byRes[g.resno].npay)) byRes[g.resno].npay = Number(g.npay);
+  });
+  var fo = feeOf(byRes);
+  res.npayBase = fo.naverBase;
+  res.cardBase = fo.cardBase;
+  res.naverFee = fo.naverFee;
+  res.cardFee = fo.cardFee;
+  res.npayMixed = fo.mixed;
+  res.fee = fo.fee;
+  res.net = res.total - res.fee;
+  res.count = res.list.length;
+  res.list.sort(function (a, b) { return a.date < b.date ? 1 : (a.date > b.date ? -1 : 0); });
+  return res;
+}
+
+function api_salesReport(from, to, shop) {
+  try {
+    var t = ymd(new Date());
+    from = ymd(toDate(from) || toDate(t.slice(0, 8) + '01'));
+    to = ymd(toDate(to) || toDate(t));
+    var rows = readSlog();
+    var cur = salesSum(rows, from, to, shop);
+
+    var span = Math.max(dayDiff(from, to) + 1, 1);
+    var pFrom = shiftDate(from, -span), pTo = shiftDate(from, -1);
+    var prev = salesSum(rows, pFrom, pTo, shop);
+
+    // 재방문: 이 기간 이전에도 결제 기록이 있는 고객
+    var before = {};
+    rows.forEach(function (g) {
+      if (g.date && g.date < from && g.custId && (!shop || g.shop === shop)) before[g.custId] = true;
+    });
+    var ids = Object.keys(cur.cust);
+    var repeat = ids.filter(function (id) { return before[id]; }).length;
+
+    var items = Object.keys(cur.byItem).map(function (k) { return cur.byItem[k]; })
+      .sort(function (a, b) { return b.total - a.total; });
+
+    return {
+      ok: true, from: from, to: to, shop: shop || '',
+      prevFrom: pFrom, prevTo: pTo,
+      total: cur.total, prevTotal: prev.total,
+      fee: cur.fee, net: cur.net, feeRate: npayRate(),
+      naverFee: cur.naverFee, cardFee: cur.cardFee,
+      creditRate: creditRate(), debitRate: debitRate(),
+      npayBase: cur.npayBase, cardBase: cur.cardBase, npayMixed: cur.npayMixed,
+      prevFee: prev.fee, prevNet: prev.net,
+      count: cur.count, prevCount: prev.count,
+      customers: ids.length, prevCustomers: Object.keys(prev.cust).length,
+      repeat: repeat,
+      avg: ids.length ? Math.round(cur.total / ids.length) : 0,
+      byShop: cur.byShop, byItem: items, byDow: cur.byDow, byPay: cur.byPay,
+      byDay: cur.byDay,
+      list: cur.list.slice(0, 200),
+      shops: shops().map(function (x) { return x.name; })
+    };
+  } catch (e) { logError('앱 매출분석', e); return { ok: false, msg: e.message }; }
+}
+
+/* ---------- 도구 ---------- */
+
+function api_checkMail() {
+  var s = processBookingMails();
+  refreshHome();
+  return { ok: true, stat: s, lastMail: cfgStr('마지막 메일확인 시각', '') };
+}
+
+function api_send(resnos, type) {
+  var sh = sheetOf(SH.DATA);
+  var idx = buildResnoIndex();
+  var ok = 0, ng = 0, msgs = [];
+  (resnos || []).forEach(function (no) {
+    var t = idx[String(no)];
+    if (!t) { ng++; return; }
+    var r = sendForRow(sh, t.r, type || '개별', true);
+    if (r.ok) ok++; else { ng++; if (r.reason) msgs.push(no + ' · ' + r.reason); }
+  });
+  return { ok: true, sent: ok, failed: ng, reasons: msgs.slice(0, 8), testMode: cfgOn('테스트 모드') };
+}
+
+function api_completePast() {
+  var sh = sheetOf(SH.DATA);
+  var last = sh.getLastRow();
+  if (last < 2) return { ok: true, n: 0 };
+  var rows = sh.getRange(2, 1, last - 1, D_HEAD.length).getValues();
+  var today = toDate(ymd(new Date()));
+  var n = 0;
+  for (var i = 0; i < rows.length; i++) {
+    var dt = toDate(rows[i][D.DATE - 1]);
+    if (rows[i][D.STATUS - 1] === STATUS.OK && dt && dt < today) {
+      sh.getRange(i + 2, D.STATUS).setValue(STATUS.DONE);
+      n++;
+    }
+  }
+  recomputeCustomerStats();
+  return { ok: true, n: n };
+}
+
+function api_needAttention() {
+  var rows = readData().map(rowToObj);
+  var t0 = ymd(new Date());
+  return {
+    ok: true,
+    check: rows.filter(function (o) { return o.status === STATUS.CHECK; }),
+    noPhone: rows.filter(function (o) {
+      return o.status === STATUS.OK && !o.phone && !o.safe && o.date >= t0; }),
+    noPaid: (function () {
+      var paidSet = {};
+      readSlog().forEach(function (g) { paidSet[g.resno] = true; });
+      return rows.filter(function (o) {
+        return o.status === STATUS.DONE && !paidSet[o.resno]; });
+    })(),
+    pastOpen: rows.filter(function (o) {
+      return o.status === STATUS.OK && o.date && o.date < t0; })
+  };
+}
+
+
+/* ---------- 유지보수: 모든 예약/고객 데이터 지우고 메일에서 다시 가져오기 ---------- */
+function resetAllData() {
+  var sh = sheetOf(SH.DATA);
+  if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, D_HEAD.length).clearContent();
+  var c = sheetOf(SH.CUST);
+  if (c.getLastRow() > 1) c.getRange(2, 1, c.getLastRow() - 1, C_HEAD.length).clearContent();
+  var lg = sheetOf(SH.LOG);
+  if (lg.getLastRow() > 1) lg.getRange(2, 1, lg.getLastRow() - 1, L_HEAD.length).clearContent();
+  var labName = cfgStr('처리완료 라벨', 'CRM처리완료');
+  var lab = GmailApp.getUserLabelByName(labName);
+  if (lab) {
+    var th = lab.getThreads(0, 200);
+    for (var i = 0; i < th.length; i++) { try { th[i].removeLabel(lab); } catch (e) {} }
+  }
+  shops().forEach(function (s) {
+    var cal = calFor(s.name);
+    if (!cal) return;
+    var evs = cal.getEvents(new Date(Date.now() - 120 * 86400000), new Date(Date.now() + 365 * 86400000));
+    evs.forEach(function (e) { try { e.deleteEvent(); } catch (x) {} });
+  });
+  shops().forEach(function (s) {
+    refreshCalendarMonth(s, new Date());
+    refreshCalendarMonth(s, nextMonthDate(new Date()));
+  });
+  refreshHome();
+}
+
+function resetAndReimport() {
+  resetAllData();
+  var st = processBookingMails();
+  recomputeCustomerStats();
+  refreshHome();
+  Logger.log(JSON.stringify(st));
+  return st;
+}
+
+
+/* ---------- 이미 들어온 예약의 요청사항을 다시 훑어 실명·연락처 채우기 ---------- */
+
+function updateCustomerIdentity(custId, realName, phone) {
+  if (!custId) return;
+  var sh = sheetOf(SH.CUST);
+  var rows = readCustomers();
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i][C.ID - 1]).trim() !== String(custId).trim()) continue;
+    if (realName && String(rows[i][C.NAME - 1]).indexOf('*') >= 0) {
+      sh.getRange(i + 2, C.NAME).setValue(realName);
+    }
+    if (phone) {
+      if (isSafePhone(phone)) {
+        if (!onlyDigits(rows[i][C.SAFE - 1])) sh.getRange(i + 2, C.SAFE).setValue(phone);
+      } else if (!onlyDigits(rows[i][C.PHONE - 1])) {
+        sh.getRange(i + 2, C.PHONE).setValue(phone);
+      }
+    }
+    return;
+  }
+}
+
+function rescanRequests() {
+  var sh = sheetOf(SH.DATA);
+  var last = sh.getLastRow();
+  if (last < 2) return { ok: true, n: 0 };
+  var v = sh.getRange(2, 1, last - 1, D_HEAD.length).getValues();
+  var n = 0;
+  var touched = {};
+  for (var i = 0; i < v.length; i++) {
+    var ex = extractFromRequest(v[i][D.REQUEST - 1], v[i][D.NAME - 1]);
+    var changed = false;
+    if (ex.phone && !v[i][D.PHONE - 1] && !v[i][D.SAFE - 1]) {
+      if (isSafePhone(ex.phone)) sh.getRange(i + 2, D.SAFE).setValue(ex.phone);
+      else sh.getRange(i + 2, D.PHONE).setValue(ex.phone);
+      changed = true;
+    }
+    if (ex.name && String(v[i][D.NAME - 1]).indexOf('*') >= 0) {
+      sh.getRange(i + 2, D.NAME).setValue(ex.name);
+      changed = true;
+    }
+    if (changed) {
+      updateCustomerIdentity(v[i][D.CUSTID - 1], ex.name, ex.phone);
+      touched[v[i][D.SHOP - 1] + '|' + ymd(v[i][D.DATE - 1])] = true;
+      n++;
+    }
+  }
+  if (n) {
+    SpreadsheetApp.flush();
+    Object.keys(touched).forEach(function (k) {
+      var p = k.split('|');
+      if (p[1]) syncCalendarForBooking(p[0], p[1]);
+    });
+    recomputeCustomerStats();
+    refreshHome();
+  }
+  return { ok: true, n: n };
+}
+
+function api_rescanRequests() {
+  try { return rescanRequests(); }
+  catch (e) { logError('요청사항 재검사', e); return { ok: false, msg: e.message }; }
+}
+
+/* 스프레드시트 통째로 백업 사본 만들기 */
+function A_백업본_만들기() {
+  var f = DriveApp.getFileById(SHEET_ID);
+  var name = f.getName() + ' (백업 ' + fmt(new Date(), 'yyyy-MM-dd HH:mm') + ')';
+  var copy = f.makeCopy(name);
+  Logger.log('백업 완료: ' + name + '\n' + copy.getUrl());
+  return copy.getUrl();
+}
+
+/* ==================== 팅커뷰 과거기록 가져오기 (1회용) ==================== */
+/* 고객 정보: [이름, 연락처, 최근방문일, 생년월일, 메모] */
+function tvCustRows() { return []; } /* 이관용 개인정보 데이터 — 공개 저장소라 비움 */
+/* 매출/예약: [날짜, 시각, 담당라인, 고객명, 시술명, 결제수단, 금액, 시술메모] */
+function tvSaleRows() { return []; } /* 이관용 개인정보 데이터 — 공개 저장소라 비움 */
+function importTinkerviewHistory() {
+  var custSheet = buildCustomerSheet();
+  var dataSheet = sheetOf(SH.DATA);
+  var slogSheet = buildSlogSheet();
+
+  /* ---- 기존 고객 색인 (연락처 숫자 / 이름) ---- */
+  var rows = readCustomers();
+  var byPhone = {}, byName = {};
+  for (var i = 0; i < rows.length; i++) {
+    var p = String(rows[i][C.PHONE - 1] || '').replace(/[^0-9]/g, '');
+    var nm = String(rows[i][C.NAME - 1] || '').trim();
+    if (p) byPhone[p] = i + 2;                 // 시트 행번호
+    if (nm && !byName[nm]) byName[nm] = i + 2;
+  }
+  function rowOf(name, phone) {
+    var p = String(phone || '').replace(/[^0-9]/g, '');
+    if (p && byPhone[p]) return byPhone[p];
+    var nm = String(name || '').trim();
+    return byName[nm] || 0;
+  }
+  function custIdAt(r) {
+    return r ? String(custSheet.getRange(r, C.ID).getValue() || '').trim() : '';
+  }
+
+  /* ---- 1) 고객 정보 채우기 (빈 칸만, 메모는 덧붙임) ---- */
+  var cFilled = 0, cMemo = 0;
+  tvCustRows().forEach(function (t) {
+    var r = rowOf(t[0], t[1]);
+    if (!r) return;
+    if (t[2]) {
+      var cur = custSheet.getRange(r, C.LAST).getValue();
+      if (!cur) { custSheet.getRange(r, C.LAST).setValue(t[2]); cFilled++; }
+    }
+    if (t[3]) {
+      var b = custSheet.getRange(r, C.BIRTH).getValue();
+      if (!b) { custSheet.getRange(r, C.BIRTH).setValue(t[3]); cFilled++; }
+    }
+    if (t[4]) {
+      var m = String(custSheet.getRange(r, C.MEMO).getValue() || '');
+      if (m.indexOf(t[4]) < 0) {
+        custSheet.getRange(r, C.MEMO).setValue(m ? (m + '\n' + t[4]) : t[4]);
+        cMemo++;
+      }
+    }
+  });
+
+  /* ---- 2) 매출 + 예약 기록 ---- */
+  var haveRes = {};
+  var last = dataSheet.getLastRow();
+  if (last > 1) {
+    dataSheet.getRange(2, D.RESNO, last - 1, 1).getValues()
+      .forEach(function (v) { haveRes[String(v[0] || '').trim()] = 1; });
+  }
+  var haveSlog = {};
+  var sl = slogSheet.getLastRow();
+  if (sl > 1) {
+    slogSheet.getRange(2, 2, sl - 1, 1).getValues()
+      .forEach(function (v) { haveSlog[String(v[0] || '').trim()] = 1; });
+  }
+
+  var now = fmt(new Date(), 'yyyy-MM-dd HH:mm:ss');
+  var addRes = [], addSlog = [], seq = {}, sMemo = 0;
+
+  tvSaleRows().forEach(function (t) {
+    var date = t[0], time = t[1], line = t[2], name = t[3];
+    var item = t[4], pay = t[5], amt = Number(t[6] || 0), memo = t[7];
+    var shop = lineToShop(line);
+    var key = date.replace(/-/g, '');
+    seq[key] = (seq[key] || 0) + 1;
+    var resno = 'TV' + key + '-' + seq[key];
+
+    var r = rowOf(name, '');
+    var cid = custIdAt(r);
+
+    if (!haveRes[resno]) {
+      var d = new Array(D_HEAD.length).fill('');
+      d[D.RESNO - 1] = resno;
+      d[D.SHOP - 1] = shop;
+      d[D.STATUS - 1] = STATUS.DONE;
+      d[D.NAME - 1] = name;
+      d[D.DATE - 1] = date;
+      d[D.TIME - 1] = time;
+      d[D.PRODUCT - 1] = item;
+      d[D.AMOUNT - 1] = amt;
+      d[D.PAID - 1] = amt;
+      d[D.STAFF - 1] = line;
+      d[D.SOURCE - 1] = '팅커뷰';
+      d[D.CUSTID - 1] = cid;
+      d[D.PROCAT - 1] = now;
+      d[D.MEMO - 1] = memo;
+      addRes.push(d);
+    }
+    if (!haveSlog[resno]) {
+      addSlog.push([now, resno, shop, cid, name, date, item, amt, pay, line, '']);
+    }
+    /* 시술메모 → 고객메모에 날짜와 함께 덧붙임 */
+    if (memo && r) {
+      var tag = '[' + date + ' 시술] ' + memo;
+      var m = String(custSheet.getRange(r, C.MEMO).getValue() || '');
+      if (m.indexOf(memo) < 0) {
+        custSheet.getRange(r, C.MEMO).setValue(m ? (m + '\n' + tag) : tag);
+        sMemo++;
+      }
+    }
+  });
+
+  if (addRes.length) {
+    dataSheet.getRange(dataSheet.getLastRow() + 1, 1, addRes.length, D_HEAD.length).setValues(addRes);
+  }
+  if (addSlog.length) {
+    slogSheet.getRange(slogSheet.getLastRow() + 1, 1, addSlog.length, SLOG_HEAD.length).setValues(addSlog);
+  }
+
+  return { ok: true, 고객채움: cFilled, 고객메모: cMemo, 시술메모: sMemo,
+           예약추가: addRes.length, 매출추가: addSlog.length };
+}
+
+function A_팅커뷰_과거기록_가져오기() {
+  var r = importTinkerviewHistory();
+  Logger.log('예약 ' + r.예약추가 + '건 / 매출 ' + r.매출추가 + '건 / 고객정보 ' + r.고객채움 +
+             '칸 / 고객메모 ' + r.고객메모 + '건 / 시술메모 ' + r.시술메모 + '건 넣었습니다.');
+  return r;
+}
+
+/* ===================== 토스 사장님 과거기록 가져오기 ===================== */
+
+/* 고객: [이름, 연락처, 등급, 고객메모, 포인트] */
+function tossCustRows() { return []; } /* 이관용 개인정보 데이터 — 공개 저장소라 비움 */
+/* 예약: [날짜, 시각, 고객명, 연락처, 시술명, 금액, 상태, 예약메모] */
+function tossResRows() { return []; } /* 이관용 개인정보 데이터 — 공개 저장소라 비움 */
+function importTossHistory() {
+  var custSheet = buildCustomerSheet();
+  var dataSheet = sheetOf(SH.DATA);
+  var slogSheet = buildSlogSheet();
+  var shop = lineToShop('닥뷰');
+  var STAFF = '제이 대표원장';
+
+  /* 상태 옮기기: 토스 → 이 앱 */
+  function toStatus(s) {
+    if (s === '방문완료') return STATUS.DONE;
+    if (s === '예정') return STATUS.OK;
+    return STATUS.CANCEL;            /* 방문미완료, 예약취소노쇼, 예약삭제 */
+  }
+
+  /* ---- 1) 고객 (없으면 만들고, 빈 칸만 채웁니다) ---- */
+  var cid = {}, cRow = {}, cNew = 0, cFilled = 0, cMemo = 0;
+  tossCustRows().forEach(function (t) {
+    var name = t[0], phone = t[1], grade = t[2], memo = t[3], point = t[4];
+    var before = readCustomers().length;
+    var id = matchOrCreateCustomer(name, phone, '', shop, '토스');
+    if (!id) return;
+    if (readCustomers().length > before) cNew++;
+
+    var rows = readCustomers(), r = 0;
+    for (var i = 0; i < rows.length; i++) {
+      if (String(rows[i][C.ID - 1]).trim() === String(id).trim()) { r = i + 2; break; }
+    }
+    if (!r) return;
+    cid[phone] = id; cRow[phone] = r;
+
+    if (grade && !String(custSheet.getRange(r, C.GRADE).getValue() || '').trim()) {
+      custSheet.getRange(r, C.GRADE).setValue(grade); cFilled++;
+    }
+    if (point && !Number(custSheet.getRange(r, C.POINT).getValue() || 0)) {
+      custSheet.getRange(r, C.POINT).setValue(Number(point)); cFilled++;
+    }
+    if (memo) {
+      var m = String(custSheet.getRange(r, C.MEMO).getValue() || '');
+      if (m.indexOf(memo) < 0) {
+        custSheet.getRange(r, C.MEMO).setValue(m ? (m + '\n' + memo) : memo);
+        cMemo++;
+      }
+    }
+  });
+
+  /* ---- 2) 예약 + 매출 ---- */
+  var haveRes = {};
+  var last = dataSheet.getLastRow();
+  if (last > 1) {
+    dataSheet.getRange(2, D.RESNO, last - 1, 1).getValues()
+      .forEach(function (v) { haveRes[String(v[0] || '').trim()] = 1; });
+  }
+  var haveSlog = {};
+  var sl = slogSheet.getLastRow();
+  if (sl > 1) {
+    slogSheet.getRange(2, 2, sl - 1, 1).getValues()
+      .forEach(function (v) { haveSlog[String(v[0] || '').trim()] = 1; });
+  }
+
+  var now = fmt(new Date(), 'yyyy-MM-dd HH:mm:ss');
+  var addRes = [], addSlog = [], seq = {}, sMemo = 0;
+
+  tossResRows().forEach(function (t) {
+    var date = t[0], time = t[1], name = t[2], phone = t[3];
+    var item = t[4], amt = Number(t[5] || 0), state = t[6], memo = t[7];
+    var st = toStatus(state);
+    var key = date.replace(/-/g, '');
+    seq[key] = (seq[key] || 0) + 1;
+    var resno = 'TS' + key + '-' + seq[key];
+    var id = cid[phone] || '';
+
+    if (!haveRes[resno]) {
+      var d = new Array(D_HEAD.length).fill('');
+      d[D.RESNO - 1]   = resno;
+      d[D.SHOP - 1]    = shop;
+      d[D.STATUS - 1]  = st;
+      d[D.NAME - 1]    = name;
+      d[D.PHONE - 1]   = phone;
+      d[D.DATE - 1]    = date;
+      d[D.TIME - 1]    = time;
+      d[D.PRODUCT - 1] = item;
+      d[D.AMOUNT - 1]  = amt;
+      d[D.PAID - 1]    = (st === STATUS.DONE) ? amt : 0;
+      d[D.STAFF - 1]   = STAFF;
+      d[D.SOURCE - 1]  = '토스';
+      d[D.CUSTID - 1]  = id;
+      d[D.PROCAT - 1]  = now;
+      d[D.MEMO - 1]    = memo;
+      addRes.push(d);
+    }
+    /* 매출은 실제 방문한 건만 */
+    if (st === STATUS.DONE && !haveSlog[resno]) {
+      addSlog.push([now, resno, shop, id, name, date, item, amt, '', STAFF, '']);
+    }
+    /* 예약메모 → 고객메모에 날짜와 함께 덧붙임 */
+    if (memo && cRow[phone]) {
+      var tag = '[' + date + ' 시술] ' + memo;
+      var m = String(custSheet.getRange(cRow[phone], C.MEMO).getValue() || '');
+      if (m.indexOf(memo) < 0) {
+        custSheet.getRange(cRow[phone], C.MEMO).setValue(m ? (m + '\n' + tag) : tag);
+        sMemo++;
+      }
+    }
+  });
+
+  if (addRes.length) {
+    dataSheet.getRange(dataSheet.getLastRow() + 1, 1, addRes.length, D_HEAD.length).setValues(addRes);
+  }
+  if (addSlog.length) {
+    slogSheet.getRange(slogSheet.getLastRow() + 1, 1, addSlog.length, SLOG_HEAD.length).setValues(addSlog);
+  }
+
+  recomputeCustomerStats();
+
+  return { ok: true, 고객신규: cNew, 고객채움: cFilled, 고객메모: cMemo,
+           시술메모: sMemo, 예약추가: addRes.length, 매출추가: addSlog.length };
+}
+
+function A_토스_과거기록_가져오기() {
+  var r = importTossHistory();
+  Logger.log('신규고객 ' + r.고객신규 + '명 / 예약 ' + r.예약추가 + '건 / 매출 ' + r.매출추가 +
+             '건 / 고객정보 ' + r.고객채움 + '칸 / 고객메모 ' + r.고객메모 +
+             '건 / 시술메모 ' + r.시술메모 + '건 넣었습니다.');
+  return r;
+}
+
+/* ===================== 지출·수수료 설정 업데이트 (1회용) ===================== */
+
+function A_지출_수수료_설정_업데이트() {
+  /* 1) 설정 시트에 새 항목 추가 (기존 값은 그대로 둡니다) */
+  buildConfigSheet();
+  _cfgCache = null;
+
+  /* 2) 지출 계정 목록에 빠진 계정만 덧붙입니다 */
+  var want = ['재료비', '월세', '관리비', '공과금', '마케팅비', '광고비',
+              '수수료', '인건비', '장비', '교육', '기타'];
+  var cur = CASH_ACCOUNTS();
+  var added = [];
+  want.forEach(function (w) { if (cur.indexOf(w) < 0) { cur.push(w); added.push(w); } });
+  if (added.length) setCfg('지출 계정 목록', cur.join(','));
+
+  /* 3) 매출내역 시트에 네이버결제액 칸 만들기 (기존 기록은 건드리지 않습니다) */
+  buildSlogSheet();
+
+  _cfgCache = null;
+  var msg = '계정 추가: ' + (added.length ? added.join(', ') : '없음') +
+            ' / 네이버 ' + npayRate() + '% / 신용 ' + creditRate() + '% / 체크 ' + debitRate() + '%';
+  Logger.log(msg);
+  return { ok: true, added: added, naver: npayRate(), credit: creditRate(), debit: debitRate() };
+}
+
+
+/* ===================== 사전 안내(3일 전) 설정 (1회용) ===================== */
+
+function A_사전안내_설정_업데이트() {
+  /* 1) 설정 시트에 사전 안내 항목 추가 (기존 값은 그대로 둡니다) */
+  buildConfigSheet();
+  _cfgCache = null;
+
+  /* 2) 닥터 뷰티랩 전일 문구가 예전 긴 안내면 짧은 리마인더로 교체합니다.
+        (긴 안내는 '샵2 문구_사전'으로 옮겨졌습니다) */
+  var cur = String(cfg('샵2 문구_전일', ''));
+  var swapped = false;
+  if (cur.length > 400) {
+    setCfg('샵2 문구_전일', "#{고객명}님, 내일 뵙겠습니다.\n\n▶ 일시 : #{예약일시}\n▶ 시술 : #{상품}\n\n· 오늘 음주는 피해주세요.\n· 내일 카페인은 줄여주세요.\n· 두피 시술은 머리를 감고 와주세요.\n· 색소가 묻어날 수 있어 밝은 색이나 고가의 의상은 피해주세요.\n· 건물 지하 주차장을 2시간 무료로 이용하실 수 있습니다.\n\n15분 이상 늦으시면 다음 예약 일정으로 인해 자동 취소됩니다. 늦으실 것 같으면 미리 전화 주세요. 010-2722-3093");
+    swapped = true;
+  }
+  _cfgCache = null;
+
+  /* 3) 자동실행 시간표를 다시 깔아 사전 안내 트리거를 만듭니다 */
+  installTriggers();
+
+  var msg = '사전 안내 ' + advanceDays() + '일 전 / ' + cfgStr('사전 알림 시각', '') +
+            ' 발송 · 닥뷰 전일 문구 교체: ' + (swapped ? '했음' : '안 함(이미 짧거나 직접 수정하신 상태)');
+  Logger.log(msg);
+  return { ok: true, days: advanceDays(), swapped: swapped };
+}
+
+
+/* ===================== 토스에서 온 '방문 미완료' 정리 (1회용) ===================== */
+
+function A_토스_미방문_정리() {
+  var sh = sheetOf(SH.DATA);
+  var last = sh.getLastRow();
+  if (last < 2) return { ok: true, fixed: 0 };
+  var v = sh.getRange(2, 1, last - 1, D_HEAD.length).getValues();
+  var fixed = [];
+  for (var i = 0; i < v.length; i++) {
+    var no = String(v[i][D.RESNO - 1] || '');
+    if (no.indexOf('TS') !== 0) continue;              /* 토스에서 넘어온 기록만 */
+    if (v[i][D.STATUS - 1] !== STATUS.CHECK) continue;
+    sh.getRange(i + 2, D.STATUS).setValue(STATUS.CANCEL);
+    fixed.push(no + ' ' + v[i][D.NAME - 1]);
+  }
+  if (fixed.length) { SpreadsheetApp.flush(); recomputeCustomerStats(); refreshHome(); }
+  Logger.log('정리한 예약: ' + (fixed.length ? fixed.join(', ') : '없음'));
+  return { ok: true, fixed: fixed.length, list: fixed };
+}
+
+/* ---------- 자동 정산 (2026-11-15) ----------
+   이용 시간이 끝난 '확정' 예약을 자동으로 '이용완료'로 바꿉니다.
+   - 당신을그리다(이름에 '그리다'가 들어간 샵): 예약 메일의 메뉴 금액으로 매출 자동 등록,
+     결제수단 네이버페이(수수료는 매출 화면에서 자동 반영)
+   - 닥터뷰티랩 등 그 밖의 샵: 이용완료만 하고 금액은 사장님이 직접 입력
+     (홈 화면 '금액 입력 대기'에 모입니다)
+   - 취소·삭제는 건드리지 않습니다. 이미 매출이 등록된 예약은 다시 등록하지 않습니다.
+   - 메일 확인(5분마다) 때 같이 돌지만 실제 처리는 15분에 한 번만 합니다. */
+function isAutoSalesShop(shopName) {
+  var key = cfgStr('자동매출 샵 키워드', '그리다');
+  return !!key && String(shopName || '').replace(/\s+/g, '').indexOf(key.replace(/\s+/g, '')) >= 0;
+}
+
+function menuNameFor(v) {
+  var nosp = function (x) { return String(x || '').replace(/\s+/g, ''); };
+  var hay = nosp(String(v[D.OPTION - 1] || '') + '|' + String(v[D.PRODUCT - 1] || ''));
+  var shop = String(v[D.SHOP - 1] || '');
+  var best = '', bestLen = 0;
+  try {
+    readMenu().forEach(function (m) {
+      if (m.shop && m.shop !== shop) return;
+      var key = nosp(m.name);
+      if (key && hay.indexOf(key) >= 0 && key.length > bestLen) { bestLen = key.length; best = m.name; }
+    });
+  } catch (e) {}
+  return best || String(v[D.PRODUCT - 1] || '').trim() || '시술';
+}
+
+function autoSettle(force) {
+  var props = PropertiesService.getScriptProperties();
+  var lastRun = Number(props.getProperty('AUTO_SETTLE_AT') || 0);
+  if (!force && Date.now() - lastRun < 15 * 60 * 1000) return { skipped: true };
+  props.setProperty('AUTO_SETTLE_AT', String(Date.now()));
+
+  var dataSh = sheetOf(SH.DATA);
+  var last = dataSh.getLastRow();
+  if (last < 2) return { done: 0, sales: 0 };
+  var rows = dataSh.getRange(2, 1, last - 1, D_HEAD.length).getValues();
+  var now = new Date();
+  // 이 날짜 이전의 예약은 손대지 않습니다 (예전에 밀린 건이 한꺼번에 매출로 잡히는 것 방지)
+  var since = cfgStr('자동정산 시작일', '2026-11-15');
+
+  var paidSet = {};
+  readSlog().forEach(function (g) { paidSet[g.resno] = true; });
+
+  var slogSh = null, out = [], stamp = nowStr(), done = 0;
+  for (var i = 0; i < rows.length; i++) {
+    var v = rows[i];
+    if (v[D.STATUS - 1] !== STATUS.OK) continue;
+    var d0 = toDate(v[D.DATE - 1]);
+    if (!d0 || ymd(d0) < since) continue;
+    var start = new Date(d0.getTime());
+    var t = timeStr(v[D.TIME - 1]).match(/(\d{1,2}):(\d{2})/);
+    if (t) start.setHours(Number(t[1]), Number(t[2]), 0, 0); else start.setHours(23, 59, 0, 0);
+    var end = new Date(start.getTime() + bookingMinutes(v) * 60000);
+    if (end > now) continue;
+
+    var r = i + 2;
+    var resno = String(v[D.RESNO - 1] || '').trim();
+    dataSh.getRange(r, D.STATUS).setValue(STATUS.DONE);
+    done++;
+
+    var amt = Number(v[D.AMOUNT - 1] || 0);
+    if (isAutoSalesShop(v[D.SHOP - 1]) && resno && !paidSet[resno] && amt > 0) {
+      out.push([stamp, resno, String(v[D.SHOP - 1]), String(v[D.CUSTID - 1] || ''),
+                String(v[D.NAME - 1] || ''), d0, menuNameFor(v), amt, '네이버페이',
+                String(v[D.STAFF - 1] || ''), amt]);
+      dataSh.getRange(r, D.PAID).setValue(amt);
+      paidSet[resno] = true;
+    }
+  }
+  if (out.length) {
+    slogSh = buildSlogSheet();
+    slogSh.getRange(slogSh.getLastRow() + 1, 1, out.length, SLOG_HEAD.length).setValues(out);
+  }
+  if (done) {
+    SpreadsheetApp.flush();
+    recomputeCustomerStats();
+    refreshHome();
+  }
+  return { done: done, sales: out.length };
+}
+
+function A_자동정산_지금실행() { var r = autoSettle(true); Logger.log(JSON.stringify(r)); return r; }

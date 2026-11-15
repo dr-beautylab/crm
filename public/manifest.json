@@ -1,0 +1,17 @@
+{
+  "name": "뷰티샵 예약 관리",
+  "short_name": "예약",
+  "description": "당신을 그리다 · 닥터 뷰티랩 예약·고객 관리",
+  "start_url": "/",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#7B3F61",
+  "theme_color": "#7B3F61",
+  "lang": "ko",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
