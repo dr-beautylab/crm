@@ -184,8 +184,20 @@ export function encodeRows(rows) {
     return raw instanceof _D ? { $d: raw.getTime() } : v;
   });
 }
+/* 구글 시트의 '시간만 있는 칸'은 1899-12-30 날짜로 오는데, 그 시절 서울 표준시(+8:27:52)로 계산돼
+   +9시간으로 읽으면 32분이 밀립니다(13:00 → 13:32). 1905년 이전 값은 그 시각 기준 'HH:mm' 글자로 바꿉니다. */
+const OLD_LIMIT = Date.UTC(1905, 0, 1), LMT_SEOUL = (8 * 3600 + 27 * 60 + 52) * 1000;
+function oldTime(ms) {
+  const d = new Date(ms + LMT_SEOUL), p = n => String(n).padStart(2, '0');
+  return p(d.getUTCHours()) + ':' + p(d.getUTCMinutes());
+}
 export function decodeRows(text) {
-  return JSON.parse(text, (k, v) => (v && typeof v === 'object' && '$d' in v && Object.keys(v).length === 1 ? new KDate(v.$d) : v));
+  return JSON.parse(text, (k, v) => {
+    if (v && typeof v === 'object' && '$d' in v && Object.keys(v).length === 1) {
+      return v.$d < OLD_LIMIT ? oldTime(v.$d) : new KDate(v.$d);
+    }
+    return v;
+  });
 }
 
 /* Apps Script 전역 서비스 흉내 */
