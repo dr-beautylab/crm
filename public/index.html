@@ -1263,14 +1263,14 @@ function drawCustomer(){
 
     '<div class="sec-title">사진 · 서류</div><div class="card"><div class="card-b">' +
       '<button class="btn sub" style="margin-bottom:9px" onclick="openPhoto(\'' + esc(c.id) + '\')">' +
-        '📸 시술 전·후 사진 촬영</button>' +
+        '📸 시술 사진 · 영상</button>' +
       '<button class="btn sub" style="margin-bottom:9px" onclick="openConsent(\'' + esc(c.id) + '\')">' +
         '📝 ' + (isDr ? '시술 동의서' : '사전 상담지') + ' 받기</button>' +
       '<button class="btn sub" style="margin-bottom:9px" onclick="consentLink({custId:\'' + esc(c.id) + '\'}, \'' + esc(c.phone || '') + '\')">🔗 상담지·동의서 링크 보내기</button>' +
       '<div id="esign-' + esc(c.id) + '" class="sub" style="font-size:13px"></div>' +
       (c.folder
-        ? '<a class="btn sub" href="' + esc(c.folder) + '" target="_blank" rel="noopener">🗂 사진 폴더 열기</a>'
-        : '<button class="btn sub" onclick="makeFolder(\'' + esc(c.id) + '\')">🗂 사진 폴더 만들기</button>') +
+        ? '<a class="btn sub" href="' + esc(c.folder) + '" target="_blank" rel="noopener">🗂 예전 사진 폴더(구글 드라이브)</a>'
+        : '') +
     '</div></div>' +
 
     '<div class="sec-title">방문 히스토리 · ' + r.history.length + '건</div>' +
@@ -1286,57 +1286,126 @@ function drawCustomer(){
 
 /* ── 시술 전·후 사진 ── */
 var PHOTO = { id:'', kind:'전' };
-function openPhoto(id){
-  PHOTO.id = id;
-  openSheet(
-    '<h2>시술 전·후 사진</h2>' +
-    '<p class="sub">찍으면 그 고객 사진 폴더에 바로 저장됩니다</p>' +
-    '<div class="card"><div class="card-b">' +
-      '<button class="btn" style="margin-bottom:9px" onclick="pickPhoto(\'전\')">📷 시술 <b>전</b> 사진 찍기</button>' +
-      '<button class="btn" onclick="pickPhoto(\'후\')">📷 시술 <b>후</b> 사진 찍기</button>' +
-    '</div></div>' +
-    '<input type="file" id="ph-file" accept="image/*" capture="environment" style="display:none" onchange="gotPhoto(this)">' +
-    '<div id="ph-out"></div>' +
-    '<p style="font-size:.8rem;color:var(--muted);padding:0 4px">' +
-      '아이폰·안드로이드 모두 카메라가 바로 열립니다. 이미 찍어둔 사진을 고를 수도 있어요. ' +
-      '사진은 자동으로 줄여서 올리기 때문에 오래 걸리지 않습니다.</p>' +
-    '<div class="btnrow"><button class="btn sub" style="grid-column:1/3" ' +
-      'onclick="openCustomer(\'' + esc(id) + '\')">← 고객 정보로</button></div>'
-  );
+/* ══════════ 시술 사진 (원본 보관) ══════════ */
+var PSET = {
+  '눈썹': ['정면 눈뜸','정면 눈감음','왼쪽 눈뜸','왼쪽 눈감음','오른쪽 눈뜸','오른쪽 눈감음','눈썹 확대'],
+  '입술': ['정면','정면 확대','왼쪽','오른쪽'],
+  '두피': ['정수리','헤어라인 정면','왼쪽','오른쪽','확대'],
+  '자유': []
+};
+function phUrl(k, dl){ return '/photo/file?k=' + encodeURIComponent(k) + '&t=' + encodeURIComponent(APP.token || '') + (dl ? '&dl=1' : ''); }
+function openPhoto(id, kind, set){
+  PHOTO.id = id; PHOTO.kind = kind || PHOTO.kind || '전'; PHOTO.set = set || PHOTO.set || '눈썹';
+  PHOTO.date = PHOTO.date || APP.boot.today;
+  openSheet('<div class="spin"></div>');
+  call('api_photos',[id]).then(function(r){
+    PHOTO.list = (r && r.list) || [];
+    drawPhoto();
+  }).catch(fail);
 }
-function pickPhoto(kind){ PHOTO.kind = kind; $('ph-file').click(); }
+function drawPhoto(){
+  var id = PHOTO.id, today = PHOTO.date;
+  var tabs = ['전','후','리터치'].map(function(k){
+    return '<button class="btn ' + (PHOTO.kind===k?'':'sub') + '" onclick="openPhoto(\'' + esc(id) + '\',\'' + k + '\')">' + k + '</button>'; }).join('');
+  var sets = Object.keys(PSET).map(function(k){
+    return '<option' + (PHOTO.set===k?' selected':'') + '>' + k + '</option>'; }).join('');
+  var mine = PHOTO.list.filter(function(p){ return p.date === today && p.kind === PHOTO.kind; });
+  function bySlot(s){ var f = null; mine.forEach(function(p){ if(p.slot === s) f = p; }); return f; }
+  var slots = PSET[PHOTO.set].map(function(s){
+    var p = bySlot(s);
+    return '<div class="phs" onclick="shoot(\'' + esc(s) + '\')">' +
+      (p ? '<img src="' + phUrl(p.thumb || p.key) + '">' : '<div class="phe">📷</div>') +
+      '<div class="phl">' + esc(s) + '</div></div>';
+  }).join('');
+  var extra = mine.filter(function(p){ return PSET[PHOTO.set].indexOf(p.slot) < 0; }).map(function(p){
+    return '<div class="phs" onclick="viewPhoto(\'' + esc(p.key) + '\')"><img src="' + phUrl(p.thumb || p.key) + '"><div class="phl">' + esc(p.slot || '추가') + '</div></div>'; }).join('');
+  var dates = {}; PHOTO.list.forEach(function(p){ (dates[p.date] = dates[p.date] || []).push(p); });
+  var hist = Object.keys(dates).sort().reverse().filter(function(d){ return d !== today; }).map(function(d){
+    return '<div class="sec-title">' + esc(d) + '</div><div class="phg">' + dates[d].map(function(p){
+      return '<div class="phs" onclick="viewPhoto(\'' + esc(p.key) + '\')"><img src="' + phUrl(p.thumb || p.key) + '"><div class="phl">' + esc(p.kind + ' ' + p.slot) + '</div></div>'; }).join('') + '</div>';
+  }).join('');
+  openSheet(
+    '<style>.phg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.phs{position:relative;aspect-ratio:3/4;border-radius:10px;overflow:hidden;background:#f3eef1;border:1px solid #e7dde2}' +
+    '.phs img{width:100%;height:100%;object-fit:cover}.phe{display:flex;align-items:center;justify-content:center;height:100%;font-size:26px;opacity:.5}' +
+    '.phl{position:absolute;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);color:#fff;font-size:11px;padding:3px 5px;text-align:center}</style>' +
+    '<h2>시술 사진 · ' + esc(today) + '</h2>' +
+    '<div class="btnrow" style="grid-template-columns:repeat(3,1fr)">' + tabs + '</div>' +
+    '<div class="fld"><label>촬영 순서</label><select onchange="PHOTO.set=this.value;drawPhoto()">' + sets + '</select></div>' +
+    '<div class="phg">' + slots + extra +
+      '<div class="phs" onclick="shoot(\'\')"><div class="phe">＋</div><div class="phl">추가 사진·영상</div></div></div>' +
+    '<p class="sub" style="font-size:12px;margin:8px 2px">칸을 누르면 카메라가 열려요. 다시 찍으면 그 칸 사진이 바뀌어요. 원본 그대로 저장됩니다.</p>' +
+    hist +
+    '<input type="file" id="ph-cam" accept="image/*" capture="environment" style="display:none" onchange="gotPhoto(this)">' +
+    '<input type="file" id="ph-pick" accept="image/*,video/*" style="display:none" onchange="gotPhoto(this)">' +
+    '<div id="ph-out"></div>' +
+    '<div class="btnrow"><button class="btn sub" style="grid-column:1/3" onclick="openCustomer(\'' + esc(id) + '\')">← 고객 정보로</button></div>');
+}
+function shoot(slot){
+  PHOTO.slot = slot;
+  openSheetMini('<h3 style="margin:0 0 10px">' + esc(slot || '추가') + '</h3>' +
+    '<button class="btn" style="margin-bottom:8px" onclick="closeMini();$(\'ph-cam\').click()">📷 카메라로 찍기</button>' +
+    '<button class="btn sub" onclick="closeMini();$(\'ph-pick\').click()">🖼 앨범에서 가져오기</button>');
+}
+function openSheetMini(h){
+  var d = document.createElement('div'); d.id = 'mini';
+  d.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:99;display:flex;align-items:flex-end';
+  d.innerHTML = '<div style="background:#fff;width:100%;padding:18px 16px 26px;border-radius:16px 16px 0 0">' + h + '</div>';
+  d.onclick = function(e){ if(e.target === d) closeMini(); };
+  document.body.appendChild(d);
+}
+function closeMini(){ var d = $('mini'); if(d) d.remove(); }
+function thumbOf(file){
+  return new Promise(function(res){
+    if(!/^image\//.test(file.type)){ res(null); return; }
+    var img = new Image(), u = URL.createObjectURL(file);
+    img.onload = function(){
+      var M = 480, w = img.width, h = img.height, k = Math.min(1, M / Math.max(w, h));
+      var cv = document.createElement('canvas'); cv.width = Math.round(w*k); cv.height = Math.round(h*k);
+      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+      URL.revokeObjectURL(u);
+      cv.toBlob(function(b){ res(b); }, 'image/jpeg', 0.8);
+    };
+    img.onerror = function(){ res(null); };
+    img.src = u;
+  });
+}
+function upload(file, params){
+  var qs = Object.keys(params).map(function(k){ return k + '=' + encodeURIComponent(params[k]); }).join('&');
+  return fetch('/photo/upload?' + qs, { method:'POST', headers:{ 'content-type': file.type || 'application/octet-stream', 'x-crm-token': APP.token || '' }, body: file })
+    .then(function(r){ return r.json(); });
+}
 function gotPhoto(inp){
-  var f = inp.files && inp.files[0];
-  inp.value = '';
+  var f = inp.files && inp.files[0]; inp.value = '';
   if(!f) return;
   var out = $('ph-out');
-  out.innerHTML = '<div class="card"><div class="card-b"><div class="spin"></div>' +
-    '<p style="text-align:center;font-size:.85rem;color:var(--muted);margin:8px 0 0">사진 올리는 중…</p></div></div>';
-  var rd = new FileReader();
-  rd.onload = function(){
-    var img = new Image();
-    img.onload = function(){
-      var MX = 1400;
-      var w = img.width, hh = img.height;
-      if(w > MX || hh > MX){ var k = MX / Math.max(w, hh); w = Math.round(w*k); hh = Math.round(hh*k); }
-      var cv = document.createElement('canvas');
-      cv.width = w; cv.height = hh;
-      cv.getContext('2d').drawImage(img, 0, 0, w, hh);
-      var data = cv.toDataURL('image/jpeg', 0.82);
-      call('api_uploadPhoto',[{custId:PHOTO.id, kind:PHOTO.kind, data:data}]).then(function(r){
-        if(!r.ok){ out.innerHTML=''; toast(r.msg||'올리지 못했습니다'); return; }
-        out.innerHTML = '<div class="card"><div class="card-b">' +
-          '<div class="kv"><span>' + esc(r.kind) + ' 사진 저장 완료</span>' +
-          '<a href="' + esc(r.url) + '" target="_blank" rel="noopener" style="color:var(--plum);font-weight:700">열기</a></div>' +
-          '</div></div>';
-        toast(r.kind + ' 사진을 저장했습니다');
-      }).catch(function(e){ out.innerHTML=''; fail(e); });
-    };
-    img.onerror = function(){ out.innerHTML=''; toast('사진을 읽지 못했습니다'); };
-    img.src = rd.result;
-  };
-  rd.onerror = function(){ out.innerHTML=''; toast('사진을 읽지 못했습니다'); };
-  rd.readAsDataURL(f);
+  out.innerHTML = '<div class="card"><div class="card-b"><div class="spin"></div><p style="text-align:center;font-size:.85rem;margin:8px 0 0">올리는 중… (' + Math.round(f.size/1024/1024*10)/10 + 'MB)</p></div></div>';
+  var id = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random()).replace(/[^a-z0-9]/gi, '');
+  var base = { cust: PHOTO.id, date: PHOTO.date, kind: PHOTO.kind, slot: PHOTO.slot || '', id: id };
+  thumbOf(f).then(function(t){
+    var p1 = t ? upload(t, Object.assign({ role:'thumb' }, base)) : Promise.resolve({ ok:true });
+    return p1.then(function(){ return upload(f, Object.assign({ role:'orig', thumb: t ? '1' : '' }, base)); });
+  }).then(function(r){
+    out.innerHTML = '';
+    if(!r || !r.ok){ toast((r && r.msg) || '올리지 못했습니다'); return; }
+    toast('저장했어요');
+    /* 같은 칸에 있던 예전 사진은 휴지통으로 */
+    var old = PHOTO.list.filter(function(p){ return PHOTO.slot && p.date === PHOTO.date && p.kind === PHOTO.kind && p.slot === PHOTO.slot; });
+    Promise.all(old.map(function(p){ return call('api_deletePhoto',[p.key]); })).then(function(){ openPhoto(PHOTO.id); });
+  }).catch(function(e){ out.innerHTML = ''; fail(e); });
+}
+function viewPhoto(key){
+  var p = null; PHOTO.list.forEach(function(x){ if(x.key === key) p = x; });
+  var isVid = p && /^video\//.test(p.type);
+  openSheet('<h2>' + esc(p ? p.date + ' · ' + p.kind + ' ' + p.slot : '사진') + '</h2>' +
+    (isVid ? '<video src="' + phUrl(key) + '" controls playsinline style="width:100%;border-radius:10px"></video>'
+           : '<img src="' + phUrl(key) + '" style="width:100%;border-radius:10px">') +
+    '<div class="btnrow"><a class="btn sub" href="' + phUrl(key, true) + '">⬇ 원본 받기</a>' +
+    '<button class="btn sub" onclick="delPhoto(\'' + esc(key) + '\',this)">🗑 휴지통으로</button></div>' +
+    '<button class="btn sub" onclick="openPhoto(\'' + esc(PHOTO.id) + '\')">← 사진 목록</button>');
+}
+function delPhoto(key, btn){
+  if(btn.dataset.armed !== '1'){ btn.dataset.armed = '1'; btn.textContent = '한 번 더 누르면 지워져요'; return; }
+  call('api_deletePhoto',[key]).then(function(){ toast('휴지통으로 옮겼어요 (30일 뒤 완전 삭제)'); openPhoto(PHOTO.id); }).catch(fail);
 }
 
 

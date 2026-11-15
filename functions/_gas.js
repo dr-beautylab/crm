@@ -5306,8 +5306,52 @@ function api_esignView(token) {
   return { ok: false, msg: '기록을 찾지 못했습니다.' };
 }
 
+/* =========================================================
+ *  시술 사진 (원본은 클라우드플레어 R2, 목록은 이 시트)
+ * ========================================================= */
+var PHOTO_SHEET = '시술사진';
+var PHOTO_HEAD = ['등록시각', '고객ID', '시술일', '구분', '칸', '원본키', '미리보기키', '크기', '찍은사람', '삭제시각', '파일종류'];
+function photoSheet() { return sheetWithHead(PHOTO_SHEET, PHOTO_HEAD); }
+function authOf(token) { return authInfo(token); }
+function addPhotoRow(o) {
+  photoSheet().appendRow([nowStr(), o.custId, o.date || ymd(new Date()), o.kind || '', o.slot || '', o.key, o.thumb || '',
+    Number(o.size || 0), o.by || '', '', o.type || '']);
+  return { ok: true };
+}
+function api_photos(custId) {
+  var s = photoSheet(), last = s.getLastRow(), out = [];
+  if (last >= 2) s.getRange(2, 1, last - 1, PHOTO_HEAD.length).getValues().forEach(function (r) {
+    if (String(r[1]) !== String(custId) || String(r[9] || '')) return;
+    out.push({ at: String(r[0]), date: ymd(r[2]) || String(r[2]), kind: String(r[3]), slot: String(r[4]),
+               key: String(r[5]), thumb: String(r[6]), type: String(r[10] || '') });
+  });
+  return { ok: true, list: out };
+}
+/* 지우기 = 휴지통 표시 (30일 뒤 실제 삭제) */
+function api_deletePhoto(key) {
+  var s = photoSheet(), last = s.getLastRow();
+  if (last < 2) return { ok: false, msg: '사진을 찾지 못했습니다.' };
+  var v = s.getRange(2, 6, last - 1, 1).getValues();
+  for (var i = 0; i < v.length; i++) if (String(v[i][0]) === String(key)) {
+    s.getRange(i + 2, 10).setValue(nowStr());
+    return { ok: true };
+  }
+  return { ok: false, msg: '사진을 찾지 못했습니다.' };
+}
+/* 30일 지난 휴지통 사진 목록 (실제 파일 삭제는 바깥에서) */
+function expiredPhotos() {
+  var s = photoSheet(), last = s.getLastRow(), out = [], limit = fmt(new Date(Date.now() - 30 * 86400000), 'yyyy-MM-dd HH:mm:ss');
+  if (last < 2) return out;
+  var v = s.getRange(2, 1, last - 1, PHOTO_HEAD.length).getValues();
+  for (var i = v.length - 1; i >= 0; i--) {
+    var del = String(v[i][9] || '');
+    if (del && del < limit) { out.push(String(v[i][5])); if (v[i][6]) out.push(String(v[i][6])); s.deleteRow(i + 2); }
+  }
+  return out;
+}
 
-  const __API = { api_login: api_login, api_savePins: api_savePins, api_setPassword: api_setPassword, api_bootstrap: api_bootstrap, api_home: api_home, api_day: api_day, api_range: api_range, api_month: api_month, api_updateBooking: api_updateBooking, api_addBooking: api_addBooking, api_searchCustomers: api_searchCustomers, api_customer: api_customer, api_saveCustomer: api_saveCustomer, api_addCustomer: api_addCustomer, api_deleteCustomer: api_deleteCustomer, api_customerFolder: api_customerFolder, api_sales: api_sales, api_menu: api_menu, api_saveMenu: api_saveMenu, api_payment: api_payment, api_savePayment: api_savePayment, api_savePp: api_savePp, api_ppLog: api_ppLog, api_staffReport: api_staffReport, api_usage: api_usage, api_blocks: api_blocks, api_saveBlock: api_saveBlock, api_deleteBlock: api_deleteBlock, api_trash: api_trash, api_restoreTrash: api_restoreTrash, api_cash: api_cash, api_saveCash: api_saveCash, api_deleteCash: api_deleteCash, api_forms: api_forms, api_saveForms: api_saveForms, api_saveConsent: api_saveConsent, api_consents: api_consents, api_uploadPhoto: api_uploadPhoto, api_sendLog: api_sendLog, api_salesReport: api_salesReport, api_checkMail: api_checkMail, api_send: api_send, api_completePast: api_completePast, api_needAttention: api_needAttention, api_rescanRequests: api_rescanRequests, api_consentLink: api_consentLink, api_esignList: api_esignList, api_esignView: api_esignView };
+
+  const __API = { api_login: api_login, api_savePins: api_savePins, api_setPassword: api_setPassword, api_bootstrap: api_bootstrap, api_home: api_home, api_day: api_day, api_range: api_range, api_month: api_month, api_updateBooking: api_updateBooking, api_addBooking: api_addBooking, api_searchCustomers: api_searchCustomers, api_customer: api_customer, api_saveCustomer: api_saveCustomer, api_addCustomer: api_addCustomer, api_deleteCustomer: api_deleteCustomer, api_customerFolder: api_customerFolder, api_sales: api_sales, api_menu: api_menu, api_saveMenu: api_saveMenu, api_payment: api_payment, api_savePayment: api_savePayment, api_savePp: api_savePp, api_ppLog: api_ppLog, api_staffReport: api_staffReport, api_usage: api_usage, api_blocks: api_blocks, api_saveBlock: api_saveBlock, api_deleteBlock: api_deleteBlock, api_trash: api_trash, api_restoreTrash: api_restoreTrash, api_cash: api_cash, api_saveCash: api_saveCash, api_deleteCash: api_deleteCash, api_forms: api_forms, api_saveForms: api_saveForms, api_saveConsent: api_saveConsent, api_consents: api_consents, api_uploadPhoto: api_uploadPhoto, api_sendLog: api_sendLog, api_salesReport: api_salesReport, api_checkMail: api_checkMail, api_send: api_send, api_completePast: api_completePast, api_needAttention: api_needAttention, api_rescanRequests: api_rescanRequests, api_consentLink: api_consentLink, api_esignList: api_esignList, api_esignView: api_esignView, api_photos: api_photos, api_deletePhoto: api_deletePhoto };
   return { __API, api, processBookingMails, autoSettle, sendReminderAdvance, sendReminderTomorrow,
-           sendReminderToday, dailyMaintenance, setup, publicForm, publicSubmit, CUR: () => CUR };
+           sendReminderToday, dailyMaintenance, setup, publicForm, publicSubmit, authOf, addPhotoRow, expiredPhotos, CUR: () => CUR };
 }

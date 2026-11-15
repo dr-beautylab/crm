@@ -14,5 +14,10 @@ export async function onRequestPost({ request, env, params }) {
   const job = JOBS[params.job];
   if (!job) return json({ ok: false, msg: '알 수 없는 작업' }, 404);
   const { result, logs } = await run(env, job);
+  /* 매일 정리할 때 휴지통에서 30일 지난 사진 파일도 지웁니다 */
+  if (params.job === 'daily' && env.PHOTOS) {
+    const { result: keys } = await run(env, g => g.expiredPhotos());
+    for (const k of keys || []) { try { await env.PHOTOS.delete(k); } catch (e) {} }
+  }
   return json({ ok: true, result, logs });
 }
