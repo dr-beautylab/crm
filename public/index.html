@@ -426,6 +426,33 @@ function listHtml(list, emptyMsg){
   return '<div class="card">' + list.map(bkHtml).join('') + '</div>';
 }
 
+
+/* 두 매장 같은 시간 막기·풀기 할 일 */
+function loadBlockTodo(){
+  var box = $('blk-todo'); if(!box) return;
+  call('api_needAttention').then(function(d){
+    var b = d.block || [], u = d.unblock || [];
+    if(!b.length && !u.length){ box.innerHTML = ''; return; }
+    function row(x, kind){
+      var md = x.date.slice(5).replace('-','/');
+      return '<div class="kv" style="align-items:center;gap:8px">' +
+        '<span style="flex:1;line-height:1.45"><b>' + esc(x.other) + '</b> ' + md + ' ' + esc(x.from) + '~' + esc(x.to) +
+        ' <b style="color:' + (kind==='unblock' ? 'var(--good,#2e7d32)' : '#c0392b') + '">' + (kind==='unblock' ? '다시 열기' : '막기') + '</b>' +
+        '<br><small style="color:var(--muted)">' + esc(x.shop) + ' · ' + esc(x.name) + (kind==='unblock' ? ' 예약 취소됨' : ' 예약') + '</small></span>' +
+        '<button class="btn sub" style="width:auto;padding:6px 12px;margin:0" onclick="ackBlock(\'' + esc(x.resno) + '\',\'' + kind + '\',this)">' +
+        (kind==='unblock' ? '열었어요' : '막았어요') + '</button></div>';
+    }
+    box.innerHTML = '<div class="sec-title">네이버에서 막고 풀 시간 · ' + (b.length + u.length) + '건</div>' +
+      '<div class="card"><div class="card-b">' + u.map(function(x){ return row(x,'unblock'); }).join('') +
+      b.map(function(x){ return row(x,'block'); }).join('') + '</div></div>' +
+      '<p style="font-size:.78rem;color:var(--muted);padding:0 4px;margin-top:-4px">한 매장에 예약이 들어오면 다른 매장의 같은 시간을 스마트플레이스에서 막아 주세요. 시간은 시술메뉴의 소요시간 기준이에요.</p>';
+  }).catch(function(){});
+}
+function ackBlock(resno, kind, btn){
+  if(btn) btn.disabled = true;
+  call('api_ackBlock',[resno, kind]).then(function(){ loadBlockTodo(); }).catch(fail);
+}
+
 /* ══════════ 홈 ══════════ */
 function renderHome(){
   var el = $('p-home');
@@ -435,7 +462,8 @@ function renderHome(){
     el.dataset.loaded = '1';
     $('ttl').textContent = '오늘';
     $('sub').textContent = human(d.today).replace('오늘 · ','');
-    var h = '';
+    var h = '<div id="blk-todo"></div>';
+    setTimeout(loadBlockTodo, 0);
 
     if(d.needCheck) h += '<div class="alert bad" onclick="switchTab(\'tool\')">' +
       '<span>⚠️</span><span><b>' + d.needCheck + '건</b> 자동으로 못 읽은 예약이 있습니다</span>' +

@@ -594,3 +594,81 @@ function defaultFormFor(shop, product) {
   }
   return names.length ? names[0] : '';
 }
+
+/* ---------- 두 매장 같은 시간 막기·풀기 할 일 ----------
+   원장님 한 분이 두 매장을 보므로, 한 매장에 예약이 들어오면 다른 매장의 같은 시간을 네이버에서 막아야 합니다.
+   네이버 예약을 직접 바꿀 수는 없어서, 막을(풀) 시간을 홈 화면 맨 위에 할 일로 띄웁니다. */
+var BLOCK_KEY = '매장간 막기 확인', UNBLOCK_KEY = '매장간 풀기 확인';
+function ackSet_(key) {
+  try { var a = JSON.parse(PropertiesService.getScriptProperties().getProperty(key) || '[]'); return Array.isArray(a) ? a : []; }
+  catch (e) { return []; }
+}
+function durFor_(o) {
+  var best = 0, p = String(o.product || '') + ' ' + String(o.option || '');
+  readMenu().forEach(function (m) {
+    if (m.min && (!m.shop || m.shop === o.shop) && p.indexOf(m.name) >= 0 && m.min > best) best = m.min;
+  });
+  return best || Number(cfg('겹침 기본 소요시간(분)', 120)) || 120;
+}
+function addMin_(hhmm, min) {
+  var m = /^(\d{1,2}):(\d{2})/.exec(String(hhmm || ''));
+  if (!m) return '';
+  var t = Number(m[1]) * 60 + Number(m[2]) + min;
+  return ('0' + Math.floor(t / 60)).slice(-2) + ':' + ('0' + (t % 60)).slice(-2);
+}
+function otherShop_(shop) {
+  var sl = shops().map(function (x) { return x.name; });
+  for (var i = 0; i < sl.length; i++) if (sl[i] !== shop) return sl[i];
+  return '';
+}
+function blockTodo_(rows, t0) {
+  if (shops().length < 2) return { block: [], unblock: [] };
+  var acked = ackSet_(BLOCK_KEY), un = ackSet_(UNBLOCK_KEY);
+  function item(o) {
+    var d = durFor_(o);
+    var viaNaver = String(o.source || '').indexOf('네이버') >= 0;
+    /* 네이버로 들어온 예약은 다른 매장만, 앱에서 직접 넣은 예약(전화·인스타 등)은 두 매장 모두 막아야 합니다 */
+    return { resno: o.resno, shop: o.shop, other: viaNaver ? otherShop_(o.shop) : '두 매장 모두', name: o.name, date: o.date,
+             from: o.time, to: addMin_(o.time, d), min: d, product: o.product };
+  }
+  var block = rows.filter(function (o) {
+    return o.status === STATUS.OK && o.date >= t0 && o.time && acked.indexOf(o.resno) < 0;
+  }).map(item);
+  var unblock = rows.filter(function (o) {
+    return o.status === STATUS.CANCEL && o.date >= t0 && acked.indexOf(o.resno) >= 0 && un.indexOf(o.resno) < 0;
+  }).map(item);
+  var by = function (a, b) { return (a.date + a.from).localeCompare(b.date + b.from); };
+  return { block: block.sort(by), unblock: unblock.sort(by) };
+}
+function api_ackBlock(resno, kind) {
+  var key = kind === 'unblock' ? UNBLOCK_KEY : BLOCK_KEY;
+  var a = ackSet_(key);
+  if (a.indexOf(String(resno)) < 0) a.push(String(resno));
+  if (a.length > 2000) a = a.slice(-2000);
+  PropertiesService.getScriptProperties().setProperty(key, JSON.stringify(a));
+  return { ok: true };
+}
+/* 처음 켤 때: 이미 지난 확인을 일일이 누르지 않도록, 지금 있는 예약은 '막음'으로 표시 (대표만) */
+function api_ackAllBlocks() {
+  if (CUR.role !== 'owner') return { ok: false, msg: '대표만 쓸 수 있습니다.' };
+  var rows = readData().map(rowToObj), t0 = ymd(new Date());
+  var a = ackSet_(BLOCK_KEY);
+  rows.forEach(function (o) { if (o.status === STATUS.OK && o.date >= t0 && a.indexOf(o.resno) < 0) a.push(o.resno); });
+  PropertiesService.getScriptProperties().setProperty(BLOCK_KEY, JSON.stringify(a));
+  return { ok: true, n: a.length };
+}
+function api_needAttention() {
+  var rows = readData().map(rowToObj);
+  var t0 = ymd(new Date());
+  var paidSet = {};
+  readSlog().forEach(function (g) { paidSet[g.resno] = true; });
+  var bt = blockTodo_(rows, t0);
+  return {
+    ok: true,
+    check: rows.filter(function (o) { return o.status === STATUS.CHECK; }),
+    noPhone: rows.filter(function (o) { return o.status === STATUS.OK && !o.phone && !o.safe && o.date >= t0; }),
+    noPaid: rows.filter(function (o) { return o.status === STATUS.DONE && !paidSet[o.resno]; }),
+    pastOpen: rows.filter(function (o) { return o.status === STATUS.OK && o.date && o.date < t0; }),
+    block: bt.block, unblock: bt.unblock
+  };
+}
