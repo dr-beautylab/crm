@@ -950,7 +950,7 @@ function savePins(btn){
 
 function openPw(){
   openSheet(
-    '<h2>사장님 번호</h2><p class="sub">영문·숫자 4~20자. 바꾸면 사장님 기기는 모두 다시 로그인해야 합니다</p>' +
+    '<h2>대표 비밀번호</h2><p class="sub">영문·숫자 4~20자. 바꾸면 이 비밀번호로 로그인한 기기는 모두 다시 로그인해야 해요</p>' +
     '<div class="field"><label>새 번호</label><input id="pw1" type="password" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="new-password"></div>' +
     '<div class="field"><label>한 번 더</label><input id="pw2" type="password" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="new-password"></div>' +
     '<button class="btn" onclick="savePw(this)">저장</button>' +
@@ -2365,14 +2365,14 @@ function renderTool(){
       '</div></div>';
 
     if(isOwner()){
-      h += '<div class="sec-title">내 번호 (사장님)</div><div class="card"><div class="card-b">' +
+      h += '<div class="sec-title">대표 비밀번호</div><div class="card"><div class="card-b">' +
         '<p style="margin:0 0 10px;font-size:.88rem;color:var(--ink2)">' +
         (APP.boot.locked
-          ? '번호가 샜다 싶으면 바꿔주세요. 바꾸면 사장님 기기는 모두 다시 로그인해야 합니다.'
-          : '⚠️ 아직 번호가 없습니다. 지금 정해두시면 이 주소를 아는 사람도 함부로 못 들어옵니다.') +
+          ? '다른 사람이 알게 된 것 같으면 바꿔 주세요. 바꾸면 대표 비밀번호로 로그인한 기기는 모두 다시 로그인해야 해요.'
+          : '⚠️ 아직 비밀번호가 없어요. 지금 정해 두면 주소를 아는 사람도 함부로 들어올 수 없어요.') +
         '</p>' +
         '<button class="btn' + (APP.boot.locked ? ' sub' : '') + '" onclick="openPw()">🔒 ' +
-        (APP.boot.locked ? '내 번호 바꾸기' : '번호 정하기') + '</button>' +
+        (APP.boot.locked ? '비밀번호 바꾸기' : '비밀번호 정하기') + '</button>' +
         '</div></div>';
 
       var pins = APP.boot.pins || [];
@@ -2414,8 +2414,8 @@ function renderTool(){
     }
 
     h += '<div class="sec-title">로그인</div><div class="card"><div class="card-b">' +
-      '<p class="whoami" style="margin:0 0 10px">지금 <b>' + esc(APP.me || '사장님') + '</b>' +
-      '<span class="rolechip">' + (isOwner() ? '사장님' : '직원') + '</span>으로 들어와 있습니다.</p>' +
+      '<p class="whoami" style="margin:0 0 10px">지금 <b>' + esc(APP.me || '대표') + '</b>' +
+      '<span class="rolechip">' + (isOwner() ? '대표' : '직원') + '</span>으로 들어와 있습니다.</p>' +
       '<button class="btn sub" onclick="doLogout()">↩ 로그아웃</button>' +
       '</div></div>';
     el.innerHTML = h;
