@@ -239,3 +239,25 @@ function expiredPhotos() {
   }
   return out;
 }
+
+/* 방문 경로·검색 키워드 통계 (전자 상담지 답변에서 모음) */
+function api_sourceStats(from, to) {
+  var s = sheetWithHead(ESIGN_SHEET, ESIGN_HEAD), last = s.getLastRow();
+  var src = {}, kw = {}, ref = {}, n = 0;
+  if (last >= 2) s.getRange(2, 1, last - 1, ESIGN_HEAD.length).getValues().forEach(function (r) {
+    var d = String(r[0]).slice(0, 10);
+    if ((from && d < from) || (to && d > to)) return;
+    var ans = []; try { ans = JSON.parse(String(r[7] || '[]')); } catch (e) {}
+    n++;
+    ans.forEach(function (a) {
+      var q = String(a.q || '').replace(/\s+/g, '');
+      var vals = Array.isArray(a.v) ? a.v : (a.v ? [a.v] : []);
+      if (q.indexOf('방문경로') >= 0 || q.indexOf('알게') >= 0) vals.forEach(function (x) { x = String(x).trim(); if (x) src[x] = (src[x] || 0) + 1; });
+      else if (q.indexOf('키워드') >= 0 || q.indexOf('검색') >= 0) vals.forEach(function (x) {
+        String(x).split(/[,\/·]|\n/).forEach(function (k) { k = k.trim().replace(/\s+/g, ' '); if (k && k.length < 40) kw[k] = (kw[k] || 0) + 1; });
+      } else if (q.indexOf('소개') >= 0) vals.forEach(function (x) { x = String(x).trim(); if (x) ref[x] = (ref[x] || 0) + 1; });
+    });
+  });
+  function top(o) { return Object.keys(o).map(function (k) { return { name: k, n: o[k] }; }).sort(function (a, b) { return b.n - a.n; }); }
+  return { ok: true, count: n, sources: top(src), keywords: top(kw).slice(0, 30), referrers: top(ref).slice(0, 20) };
+}

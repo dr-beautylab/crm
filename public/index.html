@@ -1409,6 +1409,30 @@ function delPhoto(key, btn){
 }
 
 
+
+/* ── 방문 경로 · 검색 키워드 통계 ── */
+function openSourceStats(days){
+  days = days || 90;
+  var to = APP.boot.today, d = new Date(to); d.setDate(d.getDate() - days);
+  var from = d.toISOString().slice(0,10);
+  openSheet('<div class="spin"></div>');
+  call('api_sourceStats',[from, to]).then(function(r){
+    function bars(list){
+      if(!list.length) return '<p class="sub">아직 모인 답변이 없어요</p>';
+      var mx = list[0].n;
+      return list.map(function(x){ return '<div style="margin:6px 0"><div style="display:flex;justify-content:space-between;font-size:14px"><span>' +
+        esc(x.name) + '</span><b>' + x.n + '</b></div><div style="height:6px;background:#f0e8ec;border-radius:3px"><div style="height:6px;border-radius:3px;background:var(--plum);width:' +
+        Math.max(4, Math.round(x.n / mx * 100)) + '%"></div></div></div>'; }).join('');
+    }
+    var pick = [30,90,365].map(function(n){ return '<button class="btn ' + (n===days?'':'sub') + '" onclick="openSourceStats(' + n + ')">' + (n===365?'1년':n+'일') + '</button>'; }).join('');
+    openSheet('<h2>방문 경로 · 검색 키워드</h2><p class="sub">최근 ' + (days===365?'1년':days+'일') + ' · 상담지 ' + r.count + '건 기준</p>' +
+      '<div class="btnrow" style="grid-template-columns:repeat(3,1fr)">' + pick + '</div>' +
+      '<div class="sec-title">어디서 알고 오셨나</div><div class="card"><div class="card-b">' + bars(r.sources) + '</div></div>' +
+      '<div class="sec-title">검색한 키워드</div><div class="card"><div class="card-b">' + bars(r.keywords) + '</div></div>' +
+      (r.referrers.length ? '<div class="sec-title">소개해 주신 분</div><div class="card"><div class="card-b">' + bars(r.referrers) + '</div></div>' : '') +
+      '<button class="btn sub" onclick="closeSheet()">닫기</button>');
+  }).catch(fail);
+}
 /* ══════════ 전자 상담지·동의서 링크 ══════════ */
 function consentLink(p, phone, form){
   if(form) p.form = form;
@@ -2376,6 +2400,7 @@ function renderTool(){
       '<button class="btn sub" style="margin-bottom:9px" onclick="openSendLog(80)">💬 문자 발송 내역</button>' +
       '<button class="btn sub"' + (isOwner() ? ' style="margin-bottom:9px"' : '') +
         ' onclick="openFormList()">📝 상담지 · 동의서 양식</button>' +
+      '<button class="btn sub" style="margin-bottom:9px" onclick="openSourceStats()">📊 방문 경로 · 검색 키워드</button>' +
       (isOwner()
         ? '<button class="btn sub" onclick="openTrash(\'\')">🗑 휴지통 (삭제 되돌리기)</button>'
         : '') +
