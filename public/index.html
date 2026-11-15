@@ -462,8 +462,7 @@ function renderHome(){
     el.dataset.loaded = '1';
     $('ttl').textContent = '오늘';
     $('sub').textContent = human(d.today).replace('오늘 · ','');
-    var h = '<div id="blk-todo"></div>';
-    setTimeout(loadBlockTodo, 0);
+    var h = '';
 
     if(d.needCheck) h += '<div class="alert bad" onclick="switchTab(\'tool\')">' +
       '<span>⚠️</span><span><b>' + d.needCheck + '건</b> 자동으로 못 읽은 예약이 있습니다</span>' +
