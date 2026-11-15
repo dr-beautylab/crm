@@ -266,3 +266,41 @@ function api_sourceStats(from, to) {
   function top(o) { return Object.keys(o).map(function (k) { return { name: k, n: o[k] }; }).sort(function (a, b) { return b.n - a.n; }); }
   return { ok: true, count: n, sources: top(src), keywords: top(kw).slice(0, 30), referrers: top(ref).slice(0, 20) };
 }
+
+/* ---------- 팅커뷰 매출 옮겨 넣기 (대표만) ----------
+   rows: [[날짜 yyyy-MM-dd, 시각 HH:mm, 담당라인, 고객명, 시술명, 결제수단, 금액, 네이버결제액], ...]
+   같은 예약번호(TVB날짜-순번)가 이미 있으면 건너뜁니다. */
+function api_importTvSales(rows) {
+  try {
+    if (CUR.role !== 'owner') return { ok: false, msg: '대표만 쓸 수 있습니다.' };
+    var dataSheet = sheetOf(SH.DATA);
+    var slogSheet = buildSlogSheet();
+    var haveRes = {};
+    readData().forEach(function (v) { haveRes[String(v[D.RESNO - 1] || '').trim()] = 1; });
+    var now = nowStr(), seq = {}, addRes = [], addSlog = [], skipped = 0, newCust = 0;
+    (rows || []).forEach(function (t) {
+      var date = String(t[0]), time = String(t[1] || ''), line = String(t[2] || '');
+      var name = String(t[3] || '').trim(), item = String(t[4] || ''), pay = String(t[5] || '');
+      var amt = Number(t[6] || 0), npay = Number(t[7] || 0);
+      var shop = lineToShop(line);
+      var key = date.replace(/-/g, '');
+      seq[key] = (seq[key] || 0) + 1;
+      var resno = 'TVB' + key + '-' + seq[key];
+      if (haveRes[resno]) { skipped++; return; }
+      var before = readCustomers().length;
+      var cid = matchOrCreateCustomer(name, '', '', shop, '팅커뷰');
+      if (readCustomers().length > before) newCust++;
+      var d = new Array(D_HEAD.length).fill('');
+      d[D.RESNO - 1] = resno; d[D.SHOP - 1] = shop; d[D.STATUS - 1] = STATUS.DONE;
+      d[D.NAME - 1] = name; d[D.DATE - 1] = date; d[D.TIME - 1] = time;
+      d[D.PRODUCT - 1] = item; d[D.AMOUNT - 1] = amt; d[D.PAID - 1] = amt;
+      d[D.STAFF - 1] = line; d[D.SOURCE - 1] = '팅커뷰'; d[D.CUSTID - 1] = cid; d[D.PROCAT - 1] = now;
+      addRes.push(d);
+      addSlog.push([now, resno, shop, cid, name, toDate(date), item, amt, pay, line, npay || '']);
+    });
+    if (addRes.length) dataSheet.getRange(dataSheet.getLastRow() + 1, 1, addRes.length, D_HEAD.length).setValues(addRes);
+    if (addSlog.length) slogSheet.getRange(slogSheet.getLastRow() + 1, 1, addSlog.length, SLOG_HEAD.length).setValues(addSlog);
+    recomputeCustomerStats();
+    return { ok: true, added: addSlog.length, skipped: skipped, newCustomers: newCust };
+  } catch (e) { logError('팅커뷰 매출 넣기', e); return { ok: false, msg: e.message }; }
+}
