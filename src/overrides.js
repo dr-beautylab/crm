@@ -101,7 +101,7 @@ function api_consentLink(p) {
     if (!shop) return { ok: false, msg: '어느 샵 양식인지 알 수 없습니다.' };
     var form = String(p.form || '') || defaultFormFor(shop, p.product);
     if (!form) return { ok: false, msg: shop + ' 에 등록된 상담지·동의서 양식이 없습니다.' };
-    /* 열려 있는 기간: 예약이 있으면 예약일 밤 11:59까지, 없으면 3일 */
+    /* 열려 있는 기간: 예약이 있으면 예약일 밤 11:59까지, 없으면 보낸 날 밤 11:59까지 */
     var token = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '').slice(0, 8);
     var now = new Date(), today = fmt(now, 'yyyy-MM-dd'), resDay = '';
     if (resno && row) resDay = String(row.date || '').slice(0, 10);
@@ -115,7 +115,7 @@ function api_consentLink(p) {
     if (/^\d{4}-\d{2}-\d{2}$/.test(resDay) && resDay >= today) {
       exp = new Date(Number(resDay.slice(0, 4)), Number(resDay.slice(5, 7)) - 1, Number(resDay.slice(8, 10)), 23, 59, 59);
     } else {
-      exp = new Date(now.getTime() + 3 * 86400000);
+      exp = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
     }
     linkRows().s.appendRow([token, nowStr(), fmt(exp, 'yyyy-MM-dd HH:mm:ss'), '대기', custId, name, resno, shop, form, '', CUR.name]);
     var path = '/s/' + token;
