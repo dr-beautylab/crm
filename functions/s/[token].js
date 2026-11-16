@@ -80,7 +80,7 @@ else {
       h+='<label class="opt"><input type="checkbox" name="q'+i+'" value="동의"><span>'+e(q.opts[0]||'위 내용을 확인했으며 동의합니다.')+'</span></label>';
     } else if(q.type==='서술'){ h+='<textarea name="q'+i+'"></textarea>'; }
     else if(q.type==='생년월일'){ h+='<input type="date" name="q'+i+'" max="'+new Date().toISOString().slice(0,10)+'"><div class="age" id="age'+i+'"></div>'; }
-    else if(q.type==='전화'){ h+='<input type="tel" inputmode="tel" name="q'+i+'" placeholder="010-0000-0000 · Intl: +65 9123 4567">'; }
+    else if(q.type==='전화'){ h+='<input type="tel" inputmode="tel" name="q'+i+'" placeholder="010-0000-0000">'; }
     else if(q.type==='서명'){ h+='<canvas class="pad2" data-pad="'+i+'"></canvas><div class="row"><span>손가락으로 서명해 주세요</span><button class="clear" type="button" data-clr="'+i+'">지우기</button></div>'; }
     else { h+='<input type="text" name="q'+i+'">'; }
     h+='</div>';
