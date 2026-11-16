@@ -174,7 +174,7 @@ function publicSubmit(token, body, meta) {
       var val = Array.isArray(x.v) ? x.v.join(', ') : (x.v === true ? '동의' : (x.v === false ? '동의안함' : String(x.v || '')));
       return '· ' + x.q + ' → ' + val;
     }).join('\n');
-    buildConsentSheet().appendRow([stamp, v[4], v[5], v[7], v[8] + ' (전자서명)', lines, 'esign:' + token]);
+    buildConsentSheet().appendRow([stamp, v[4], v[5], v[7], v[8] + ' (전자서명' + (LN ? ' · ' + LN : '') + ')', lines, 'esign:' + token]);
   } catch (e) {}
   return { ok: true };
 }
@@ -385,6 +385,7 @@ function ageOf_(v) {
 function shownQ_(qs, ans, i, depth) {
   var c = qs[i].cond;
   if (!c || (depth || 0) > 5) return true;
+  if (/^lang\s*=/.test(c)) return true;
   var m = /^나이\s*<\s*(\d+)$/.exec(c);
   if (m) {
     for (var k = 0; k < qs.length; k++) if (qs[k].type === '생년월일') {
@@ -439,13 +440,15 @@ function publicSubmit(token, body, meta) {
   if (sign.length > 400000) return { ok: false, msg: '서명 이미지가 너무 큽니다. 다시 서명해 주세요.' };
   var L = findLink(token), v = L.v;
   var clean = qs.map(function (q, i) { return { q: q.q, type: q.type, v: ans[i] ? ans[i].v : '' }; });
+  var LN = { en: '영어', ja: '일본어' }[meta && meta.lang];
+  if (LN) clean.push({ q: '작성 언어', type: '단답', v: LN });
   var stamp = nowStr();
   sheetWithHead(ESIGN_SHEET, ESIGN_HEAD).appendRow([stamp, token, v[4], v[5], v[6], v[7], v[8],
     JSON.stringify(clean), sign, String((meta && meta.ua) || '').slice(0, 300), String((meta && meta.ip) || '')]);
   L.s.getRange(L.r, 4).setValue('완료');
   L.s.getRange(L.r, 10).setValue(stamp);
   try {
-    var lines = clean.filter(function (x, i) { return x.type !== '안내' && shownQ_(qs, ans, i); }).map(function (x) {
+    var lines = clean.filter(function (x, i) { return x.type !== '안내' && (i >= qs.length || shownQ_(qs, ans, i)); }).map(function (x) {
       var val = x.type === '서명' ? (x.v ? '서명 완료' : '') :
         (Array.isArray(x.v) ? x.v.join(', ') : (x.v === true ? '동의' : (x.v === false ? '동의안함' : String(x.v || ''))));
       return '· ' + x.q + ' → ' + val;
@@ -510,7 +513,7 @@ function pmuForms_(shop) {
     L.push(Q(form, '그 밖에 원장님께 알려 주실 내용', '서술', [], 0));
     return L;
   }
-  function tail(form, care) {
+  function tail(form, care, gift) {
     var agreeText = '본인은 상기 시술을 시행하기에 앞서 매우 드물게 특이 체질 등으로 예측할 수 없는 부작용과 후유증이 발생될 가능성이 있는 점을 염두에 두며 시술 관련 안내에 대해 구체적으로 충분히 안내받았음을 확인합니다. 본인이 지침 위반하여 발생하는 문제에 대해서 업체는 책임지지 않습니다. 본인은 시술에 자발적 동의하며, 시술 결과에 대해 사업자의 객관적 중대한 책임 외 이의 제기하지 않음을 확인합니다.';
     return [
       Q(form, '시술 후 주의사항\n\n' + care.map(function (x) { return '· ' + x; }).join('\n'), '안내'),
@@ -525,6 +528,9 @@ function pmuForms_(shop) {
       Q(form, '기록용 사진·영상 촬영', '동의', ['시술 전후 상태를 정확히 기록하고 관리하기 위한 사진·영상 촬영에 동의합니다.'], 1),
       Q(form, '시술 사진을 매장 SNS에 올려도 될까요? (선택)', '단일선택', ['동의해요', '동의하지 않아요'], 0, '',
         '동의하지 않아도 시술받는 데 아무 문제 없어요.'),
+      /* 리뷰 혜택은 한국어 화면에서만 보여요 (외국어 화면에서는 숨김) */
+      Q(form, '리뷰 작성 시 혜택이 있어요. 참여하시겠어요? (선택)', '단일선택', ['참여할게요', '다음에 할게요'], 0, 'lang=ko',
+        '시술 후 리뷰를 남겨 주시면 ' + gift + ' 드려요.'),
       Q(form, '개인정보 수집·이용', '동의', ['이름, 연락처, 생년월일 등 작성한 개인정보의 수집·이용에 동의하며, 관련 법령에 따라 일정 기간 보관됨을 설명 들었습니다.'], 1),
       Q(form, '동의서 사본이 필요하시면 언제든 말씀해 주세요.', '안내')
     ];
@@ -537,7 +543,7 @@ function pmuForms_(shop) {
     '회복 기간(최소 1주) 동안 음주와 흡연, 사우나, 땀이 많이 나는 운동은 염증을 일으킬 수 있어 자제해 주세요.',
     '딱지를 억지로 떼지 마세요. 억지로 떼면 색소가 고르게 안착되지 않거나 색이 덜 나올 수 있어요.',
     '1달 동안 시간을 두고 지켜봐 주세요. 점점 예쁘게 색이 올라와요.'
-  ]));
+  ], '재생크림을'));
   out = out.concat(top(LP, '입술'), health(LP, '입술', '입술 문신(반영구)',
     yn(LP, '입술 헤르페스(구순포진) 수포가 올라온 적이 있나요?', '마지막으로 올라온 시기를 알려 주세요')), tail(LP, [
     '시술 후 각질이 떨어지는 동안 입술이 많이 건조해요. 립밤을 자주 발라 보습해 주세요. (매우 중요)',
@@ -549,8 +555,8 @@ function pmuForms_(shop) {
     '회복 기간(최소 1주) 동안 음주와 흡연, 사우나, 땀이 많이 나는 운동은 염증을 일으킬 수 있어 자제해 주세요.',
     '색을 오래 유지하려면 평소에도 립밤으로 보습을 꾸준히 해 주세요.',
     '1달 동안 색이 변하는 건 자연스러운 과정이에요. 시간을 두고 지켜봐 주세요.'
-  ]));
-  out = out.concat(top(SC, '두피'), health(SC, '두피', '두피 문신이나 반영구',
+  ], '입술 보습용 바셀린을'));
+  out = out.concat(top(SC, '두피'), health(SC, '두피', '두피 문신(반영구)',
     yn(SC, '모발 이식을 받으신 적이 있나요?', '횟수와 시기를 알려 주세요').concat(
     yn(SC, '두피염, 지루성 피부염, 두피 감염이 있나요?', '어떤 상태인지 알려 주세요'))), tail(SC, [
     '시술 24시간 뒤부터 샴푸해 주세요. 손에서 거품을 충분히 낸 뒤 자극 없이 감고 시원한 물로 헹궈 주세요.',
@@ -560,7 +566,7 @@ function pmuForms_(shop) {
     '두피에 남은 색소가 베개에 묻을 수 있어요. 어두운 수건을 깔고 주무세요.',
     '염색이나 펌은 2주 이상 피해 주세요. (가능하면 리터치 시술 1달 뒤부터)',
     '1달 동안 색이 변하는 건 자연스러운 과정이에요. 시간을 두고 지켜봐 주세요.'
-  ]));
+  ], '색소가 묻지 않게 막아 주는 방수 베개 커버를'));
   var G = FORM_COMMON, M = '나이<19';
   out = out.concat([
     { shop: '', form: G, q: '보호자 동의 (만 19세 미만)\n만 19세 미만 고객님은 보호자 동의가 꼭 필요해요. (「문신사법」 제22조)\n방문하실 때 고객님과 보호자 분의 신분증, 그리고 가족관계증명서처럼 관계를 확인할 수 있는 서류를 함께 가져와 주세요.', type: '안내', opts: [], need: false, cond: M, help: '' },
