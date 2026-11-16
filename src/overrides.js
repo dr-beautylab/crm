@@ -672,3 +672,16 @@ function api_needAttention() {
     block: bt.block, unblock: bt.unblock
   };
 }
+
+/* 전화번호 정리: '+' 또는 '00'으로 시작하면 외국 번호로 보고 '+숫자' 그대로 저장
+   (예: +65 9123 4567 → +6591234567). 한국 번호는 예전처럼 하이픈 넣기 */
+function normPhone(s) {
+  var raw = String(s || '').trim();
+  var d = onlyDigits(raw);
+  if (!d) return '';
+  if (/^\+/.test(raw)) return '+' + d;
+  if (/^00/.test(d)) return '+' + d.slice(2);
+  if (d.length === 11) return d.slice(0, 3) + '-' + d.slice(3, 7) + '-' + d.slice(7);
+  if (d.length === 10) return d.slice(0, 3) + '-' + d.slice(3, 6) + '-' + d.slice(6);
+  return raw;
+}
