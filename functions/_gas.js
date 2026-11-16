@@ -5229,7 +5229,7 @@ function api_consentLink(p) {
     }
     linkRows().s.appendRow([token, nowStr(), fmt(exp, 'yyyy-MM-dd HH:mm:ss'), '대기', custId, name, resno, shop, form, '', CUR.name]);
     var path = '/s/' + token;
-    var text = (name ? name + '님, ' : '') + '방문 전 ' + form + ' 작성 부탁드립니다.\n' + '#{링크}' + '\n(' + (exp.getMonth() + 1) + '월 ' + exp.getDate() + '일까지 작성해 주세요)';
+    var text = (name ? String(name).replace(/님$/, '') + '님, ' : '') + '방문 전 ' + form + ' 작성 부탁드립니다.\n' + '#{링크}' + '\n(' + (exp.getMonth() + 1) + '월 ' + exp.getDate() + '일까지 작성해 주세요)';
     return { ok: true, token: token, path: path, form: form, forms: formNamesFor(shop), text: text };
   } catch (e) { logError('동의서 링크', e); return { ok: false, msg: e.message }; }
 }
