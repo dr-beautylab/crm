@@ -101,12 +101,25 @@ function api_consentLink(p) {
     if (!shop) return { ok: false, msg: '어느 샵 양식인지 알 수 없습니다.' };
     var form = String(p.form || '') || defaultFormFor(shop, p.product);
     if (!form) return { ok: false, msg: shop + ' 에 등록된 상담지·동의서 양식이 없습니다.' };
-    var days = Number(cfg('동의서 링크 유효일수', 7)) || 7;
+    /* 열려 있는 기간: 예약이 있으면 예약일 밤 11:59까지, 없으면 3일 */
     var token = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '').slice(0, 8);
-    var now = new Date(), exp = new Date(now.getTime() + days * 86400000);
+    var now = new Date(), today = fmt(now, 'yyyy-MM-dd'), resDay = '';
+    if (resno && row) resDay = String(row.date || '').slice(0, 10);
+    if (!resDay && custId) {
+      readData().forEach(function (v) {
+        var o = rowToObj(v), d = String(o.date || '').slice(0, 10);
+        if (o.custId === custId && (!shop || o.shop === shop) && d >= today && (!resDay || d < resDay)) resDay = d;
+      });
+    }
+    var exp;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(resDay) && resDay >= today) {
+      exp = new Date(Number(resDay.slice(0, 4)), Number(resDay.slice(5, 7)) - 1, Number(resDay.slice(8, 10)), 23, 59, 59);
+    } else {
+      exp = new Date(now.getTime() + 3 * 86400000);
+    }
     linkRows().s.appendRow([token, nowStr(), fmt(exp, 'yyyy-MM-dd HH:mm:ss'), '대기', custId, name, resno, shop, form, '', CUR.name]);
     var path = '/s/' + token;
-    var text = (name ? name + '님, ' : '') + '방문 전 ' + form + ' 작성 부탁드립니다.\n' + '#{링크}' + '\n(' + days + '일 안에 작성해 주세요)';
+    var text = (name ? name + '님, ' : '') + '방문 전 ' + form + ' 작성 부탁드립니다.\n' + '#{링크}' + '\n(' + (exp.getMonth() + 1) + '월 ' + exp.getDate() + '일까지 작성해 주세요)';
     return { ok: true, token: token, path: path, form: form, forms: formNamesFor(shop), text: text };
   } catch (e) { logError('동의서 링크', e); return { ok: false, msg: e.message }; }
 }

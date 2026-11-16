@@ -1191,6 +1191,52 @@ function custSearch(){
     }).catch(fail);
   }, 220);
 }
+/* ── 연결 고객: 이름을 치면 고객 목록을 띄우고, 고르면 '이름(뒷4자리)'로 넣습니다 ── */
+var _rt = null, _relL = [];
+function relParts(v){ return String(v||'').split(',').map(function(x){ return x.trim(); }).filter(function(x){ return x; }); }
+function relSuggest(el){
+  relChips(el.value);
+  clearTimeout(_rt);
+  var parts = String(el.value).split(','), term = parts[parts.length-1].trim();
+  var box = $('rel-sug'); if(!box) return;
+  if(!term || /\(\d{4}\)/.test(term)){ box.innerHTML = ''; return; }
+  _rt = setTimeout(function(){
+    call('api_searchCustomers',[term, '']).then(function(r){
+      var self = el.getAttribute('data-self');
+      var L = (r.list || []).filter(function(c){ return c.id !== self; }).slice(0, 6);
+      if(!L.length){ box.innerHTML = ''; return; }
+      _relL = L;
+      box.innerHTML = '<div class="card" style="margin:-4px 0 8px"><div class="card-b" style="padding:4px 10px">' + L.map(function(c){
+        var p4 = String(c.phone || c.safe || '').replace(/[^0-9]/g,'').slice(-4);
+        return '<button type="button" class="bk" style="width:100%" onclick="relPick(' + L.indexOf(c) + ')">' +
+          '<span class="bk-bar' + (shopIdx(c.shop)===2?' s2':'') + '"></span>' +
+          '<span class="bk-m"><span class="bk-n">' + esc(c.name) + '</span><span class="bk-p">' + esc((c.phone||c.safe||'번호 없음') + ' · ' + c.shop) + '</span></span></button>';
+      }).join('') + '</div></div>';
+    }).catch(function(){});
+  }, 250);
+}
+function relPick(i){
+  var c = _relL[i], el = $('k-rel'); if(!c || !el) return;
+  var name = c.name, p4 = String(c.phone || c.safe || '').replace(/[^0-9]/g,'').slice(-4);
+  var parts = String(el.value).split(',');
+  parts[parts.length-1] = ' ' + name + (p4 ? '(' + p4 + ')' : '');
+  el.value = parts.join(',').replace(/^\s+/,'') + ', ';
+  $('rel-sug').innerHTML = '';
+  relChips(el.value); el.focus();
+}
+function relChips(v){
+  var box = $('rel-chips'); if(!box) return;
+  box.innerHTML = relParts(v).map(function(x){
+    var m = /^([^(]+?)\s*\((\d{4})\)/.exec(x); if(!m) return '';
+    return '<button type="button" class="tag" style="border:0;cursor:pointer" data-n="' + esc(m[1]) + '" data-p="' + m[2] + '" onclick="relOpen(this.dataset.n,this.dataset.p)">🔗 ' + esc(x) + '</button>';
+  }).join('');
+}
+function relOpen(name, p4){
+  call('api_searchCustomers',[name, '']).then(function(r){
+    var hit = (r.list || []).filter(function(c){ return c.name === name && String(c.phone||c.safe||'').replace(/[^0-9]/g,'').slice(-4) === p4; })[0];
+    if(hit) openCustomer(hit.id); else toast('그 고객을 찾지 못했어요');
+  }).catch(fail);
+}
 function openCustomer(id){
   openSheet('<div class="spin"></div>');
   call('api_customer',[id]).then(function(r){
@@ -1272,10 +1318,12 @@ function drawCustomer(){
       '남은 회차: <b>' + (c.left===null?'—':c.left) + '</b>' + (c.total?' / '+c.total:'') + ' (사용 ' + (c.used||0) + '회)</p>' +
 
     '<div class="sec-title">연결 고객</div>' +
-    '<div class="field"><input id="k-rel" value="' + esc(c.rel||'') + '" ' +
-      'placeholder="예) 김영희 (친구 소개), 박철수 (남편)"></div>' +
+    '<div class="field" style="position:relative"><input id="k-rel" autocomplete="off" value="' + esc(c.rel||'') + '" ' +
+      'data-self="' + esc(c.id) + '" oninput="relSuggest(this)" onfocus="relSuggest(this)" ' +
+      'placeholder="이름을 치면 고객 목록이 떠요"></div>' +
+    '<div id="rel-sug"></div><div id="rel-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin:0 0 6px"></div>' +
     '<p style="font-size:.8rem;color:var(--muted);padding:0 4px;margin:0 0 4px">' +
-      '가족·친구·소개해준 분을 적어두면 나중에 찾기 쉽습니다.</p>';
+      '고른 뒤 (남편), (친구 소개)처럼 관계를 덧붙여도 돼요. 아래 이름을 누르면 그 고객으로 바로 가요.</p>';
 
   if(isDr){
     h += '<div class="sec-title">시술 기록 (닥터뷰티랩)</div>' +
@@ -1316,6 +1364,7 @@ function drawCustomer(){
       '<button class="btn sub" style="grid-column:1/3" onclick="closeSheet()">닫기</button></div>';
 
   openSheet(h);
+  if($('k-rel')) relChips($('k-rel').value);
 }
 
 /* ── 시술 전·후 사진 ── */
