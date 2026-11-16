@@ -1300,9 +1300,7 @@ function drawCustomer(){
     '<div class="sec-title">사진 · 서류</div><div class="card"><div class="card-b">' +
       '<button class="btn sub" style="margin-bottom:9px" onclick="openPhoto(\'' + esc(c.id) + '\')">' +
         '📸 시술 사진 · 영상</button>' +
-      '<button class="btn sub" style="margin-bottom:9px" onclick="openConsent(\'' + esc(c.id) + '\')">' +
-        '📝 상담지·동의서 받기 (이 기기에서 작성)</button>' +
-      '<button class="btn sub" style="margin-bottom:9px" onclick="consentLink({custId:\'' + esc(c.id) + '\'}, \'' + esc(c.phone || '') + '\')">🔗 상담지·동의서 링크 보내기</button>' +
+      consentBtns(c) +
       '<div id="esign-' + esc(c.id) + '" class="sub" style="font-size:13px"></div>' +
       (c.folder
         ? '<a class="btn sub" href="' + esc(c.folder) + '" target="_blank" rel="noopener">🗂 예전 사진 폴더(구글 드라이브)</a>'
@@ -1481,7 +1479,7 @@ function consentLink(p, phone, form){
           return '<option' + (f === r.form ? ' selected' : '') + '>' + esc(f) + '</option>'; }).join('') + '</select></div>'
       : '';
     var ph = String(phone || '').replace(/[^0-9]/g, '');
-    openSheet('<h2>상담지·동의서 링크</h2>' + sel +
+    openSheet('<h2>' + consentTitle(p.shop) + ' 링크</h2>' + sel +
       '<div class="fld"><label>보낼 문구</label><textarea id="cl-msg" rows="5">' + esc(msg) + '</textarea></div>' +
       '<div class="btnrow">' +
         (ph ? '<a class="btn" href="sms:' + ph + '?body=' + encodeURIComponent(msg) + '">💬 문자앱으로 보내기</a>' : '') +
@@ -1529,6 +1527,25 @@ function viewEsign(token){
 }
 /* ── 사전 상담지 · 시술 동의서 ── */
 var CON = { id:'', name:'', shop:'', form:'', list:[], ans:{}, sign:null };
+function shopByIdx(n){
+  var L = (APP.boot && APP.boot.shops) || [];
+  for(var i=0;i<L.length;i++) if(L[i].idx===n) return L[i].name;
+  return '';
+}
+/* 당신을 그리다 = 사전 상담지, 닥터뷰티랩 = 시술 동의서 로 이름을 나눠 버튼을 따로 둡니다 */
+function consentBtns(c){
+  var dg = shopByIdx(1), dr = shopByIdx(2), id = esc(c.id), ph = esc(c.phone || '');
+  function row(shop, label){
+    if(!shop) return '';
+    var s = esc(shop).replace(/'/g, "\\'");
+    return '<div class="btnrow" style="margin-bottom:9px">' +
+      '<button class="btn sub" onclick="openConsent(\'' + id + '\', \'' + s + '\')">📝 ' + label + ' 받기</button>' +
+      '<button class="btn sub" onclick="consentLink({custId:\'' + id + '\', shop:\'' + s + '\'}, \'' + ph + '\')">🔗 ' + label + ' 링크</button>' +
+      '</div>';
+  }
+  return row(dg, '사전 상담지') + row(dr, '시술 동의서');
+}
+function consentTitle(shop){ return shop && shop === shopByIdx(1) ? '사전 상담지' : (shop && shop === shopByIdx(2) ? '시술 동의서' : '상담지·동의서'); }
 function openConsent(id, shop, form){
   var c = (APP.cust && APP.cust.customer) || null;
   if(!c || c.id !== id){
@@ -1556,7 +1573,7 @@ function openConsent(id, shop, form){
     if(shops.indexOf(shop) < 0) shops.push(shop);
     if(shops.indexOf(c.shop) < 0 && c.shop) shops.push(c.shop);
     var url = location.origin + r.path;
-    openSheet('<h2>상담지·동의서 받기</h2>' +
+    openSheet('<h2>' + consentTitle(shop) + ' 받기</h2>' +
       '<p class="sub">' + esc(c.name) + ' 고객님</p>' +
       '<div class="fld"><label>매장</label><select id="oc-shop">' + shops.map(function(x){
         return '<option' + (x === shop ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select></div>' +
