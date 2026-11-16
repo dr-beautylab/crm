@@ -1220,7 +1220,24 @@ function relPick(i){
   var name = c.name, p4 = String(c.phone || c.safe || '').replace(/[^0-9]/g,'').slice(-4);
   var parts = String(el.value).split(',');
   parts[parts.length-1] = ' ' + name + (p4 ? '(' + p4 + ')' : '');
-  el.value = parts.join(',').replace(/^\s+/,'') + ', ';
+  el.value = parts.join(',').replace(/^\s+/,'');
+  relChips(el.value);
+  /* 고른 다음 관계를 바로 고를 수 있게 */
+  var R = ['배우자','가족','친구','지인','직장 동료','소개해 준 분','소개받은 분'];
+  $('rel-sug').innerHTML = '<div class="card" style="margin:-4px 0 8px"><div class="card-b">' +
+    '<div style="font-size:.82rem;color:var(--muted);margin-bottom:6px">' + esc(name) + ' 님과의 관계</div>' +
+    '<div style="display:flex;flex-wrap:wrap;gap:6px">' +
+      R.map(function(x){ return '<button type="button" class="tag" style="border:0;cursor:pointer;padding:6px 10px" onclick="relSet(this.textContent)">' + esc(x) + '</button>'; }).join('') +
+    '</div>' +
+    '<div style="display:flex;gap:6px;margin-top:8px"><input id="rel-own" placeholder="직접 쓰기 (예: 언니)" style="flex:1">' +
+      '<button type="button" class="btn sub" style="width:auto;margin:0;padding:8px 12px" onclick="relSet($(\'rel-own\').value)">넣기</button></div>' +
+    '<button type="button" class="btn sub" style="margin-top:8px" onclick="relSet(\'\')">관계 없이 넘어가기</button>' +
+  '</div></div>';
+}
+function relSet(r){
+  var el = $('k-rel'); if(!el) return;
+  r = String(r || '').trim();
+  el.value = el.value.replace(/[,\s]+$/,'') + (r ? ' (' + r + ')' : '') + ', ';
   $('rel-sug').innerHTML = '';
   relChips(el.value); el.focus();
 }
@@ -1323,7 +1340,7 @@ function drawCustomer(){
       'placeholder="이름을 치면 고객 목록이 떠요"></div>' +
     '<div id="rel-sug"></div><div id="rel-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin:0 0 6px"></div>' +
     '<p style="font-size:.8rem;color:var(--muted);padding:0 4px;margin:0 0 4px">' +
-      '고른 뒤 (남편), (친구 소개)처럼 관계를 덧붙여도 돼요. 아래 이름을 누르면 그 고객으로 바로 가요.</p>';
+      '고객을 고르면 관계를 고르는 칸이 떠요. 아래 이름을 누르면 그 고객으로 바로 가요.</p>';
 
   if(isDr){
     h += '<div class="sec-title">시술 기록 (닥터뷰티랩)</div>' +
