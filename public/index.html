@@ -1301,7 +1301,7 @@ function drawCustomer(){
       '<button class="btn sub" style="margin-bottom:9px" onclick="openPhoto(\'' + esc(c.id) + '\')">' +
         '📸 시술 사진 · 영상</button>' +
       '<button class="btn sub" style="margin-bottom:9px" onclick="openConsent(\'' + esc(c.id) + '\')">' +
-        '📝 ' + (isDr ? '시술 동의서' : '사전 상담지') + ' 받기</button>' +
+        '📝 상담지·동의서 받기 (이 기기에서 작성)</button>' +
       '<button class="btn sub" style="margin-bottom:9px" onclick="consentLink({custId:\'' + esc(c.id) + '\'}, \'' + esc(c.phone || '') + '\')">🔗 상담지·동의서 링크 보내기</button>' +
       '<div id="esign-' + esc(c.id) + '" class="sub" style="font-size:13px"></div>' +
       (c.folder
@@ -1529,22 +1529,44 @@ function viewEsign(token){
 }
 /* ── 사전 상담지 · 시술 동의서 ── */
 var CON = { id:'', name:'', shop:'', form:'', list:[], ans:{}, sign:null };
-function openConsent(id){
+function openConsent(id, shop, form){
   var c = (APP.cust && APP.cust.customer) || null;
   if(!c || c.id !== id){
     call('api_customer',[id]).then(function(r){
       if(!r.ok){ toast(r.msg); return; }
-      APP.cust = r; openConsent(id);
+      APP.cust = r; openConsent(id, shop, form);
     }).catch(fail);
     return;
   }
-  CON.id = id; CON.name = c.name; CON.shop = c.shop; CON.ans = {}; CON.sign = null;
+  /* 매장은 고객 등록 매장이 아니라 오늘과 가장 가까운 예약의 매장을 먼저 고릅니다 */
+  if(!shop){
+    var today = new Date().toISOString().slice(0,10), best = null, bd = 1e9;
+    (APP.cust.history || []).forEach(function(o){
+      var d = Math.abs((new Date(String(o.date).slice(0,10)) - new Date(today)) / 86400000);
+      if(o.shop && !isNaN(d) && d < bd){ bd = d; best = o; }
+    });
+    shop = (best && best.shop) || c.shop;
+  }
   openSheet('<div class="spin"></div>');
-  call('api_forms',[c.shop]).then(function(r){
-    if(!r.ok){ closeSheet(); toast(r.msg||'양식을 불러오지 못했습니다'); return; }
-    CON.list = r.list || [];
-    CON.form = CON.list.length ? CON.list[0].form : '상담지';
-    drawConsent();
+  var q = { custId: id, shop: shop };
+  if(form) q.form = form;
+  call('api_consentLink',[q]).then(function(r){
+    if(!r || !r.ok){ closeSheet(); toast((r && r.msg) || '양식을 불러오지 못했습니다'); return; }
+    var shops = (APP.boot && APP.boot.shops) ? APP.boot.shops.map(function(x){ return x.name || x; }) : [];
+    if(shops.indexOf(shop) < 0) shops.push(shop);
+    if(shops.indexOf(c.shop) < 0 && c.shop) shops.push(c.shop);
+    var url = location.origin + r.path;
+    openSheet('<h2>상담지·동의서 받기</h2>' +
+      '<p class="sub">' + esc(c.name) + ' 고객님</p>' +
+      '<div class="fld"><label>매장</label><select id="oc-shop">' + shops.map(function(x){
+        return '<option' + (x === shop ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select></div>' +
+      '<div class="fld"><label>양식</label><select id="oc-form">' + (r.forms || [r.form]).map(function(x){
+        return '<option' + (x === r.form ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select></div>' +
+      '<a class="btn" href="' + esc(url) + '" target="_blank" rel="noopener">📝 작성 화면 열기 (고객님께 건네주세요)</a>' +
+      '<p class="sub" style="font-size:12px;margin-top:10px">작성·서명을 마치면 이 고객 기록에 바로 저장돼요. 다 쓴 뒤 이 앱으로 돌아오세요.</p>' +
+      '<button class="btn sub" onclick="closeSheet()">닫기</button>');
+    $('oc-shop').onchange = function(){ openConsent(id, this.value); };
+    $('oc-form').onchange = function(){ openConsent(id, $('oc-shop').value, this.value); };
   }).catch(function(e){ closeSheet(); fail(e); });
 }
 function drawConsent(){
