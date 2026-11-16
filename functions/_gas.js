@@ -5796,8 +5796,87 @@ function normPhone(s) {
   return raw;
 }
 
+/* ---------- 이름 고치기: 고객DB·예약·매출내역·선불내역 이름을 한꺼번에 ----------
+   네이버가 가린 이름(PH*** 등)을 실명으로 바꿀 때 씁니다. */
+function renameEverywhere(cid, resno, newName) {
+  newName = String(newName || '').trim();
+  if (!newName) return { ok: false, msg: '이름을 넣어 주세요.' };
+  if (newName.indexOf('*') >= 0) return { ok: false, msg: '별표(*) 없이 실명을 넣어 주세요.' };
+  var n = { cust: 0, book: 0, sales: 0, pp: 0 };
 
-  const __API = { api_login: api_login, api_savePins: api_savePins, api_setPassword: api_setPassword, api_bootstrap: api_bootstrap, api_home: api_home, api_day: api_day, api_range: api_range, api_month: api_month, api_updateBooking: api_updateBooking, api_addBooking: api_addBooking, api_searchCustomers: api_searchCustomers, api_customer: api_customer, api_saveCustomer: api_saveCustomer, api_addCustomer: api_addCustomer, api_deleteCustomer: api_deleteCustomer, api_customerFolder: api_customerFolder, api_sales: api_sales, api_menu: api_menu, api_saveMenu: api_saveMenu, api_payment: api_payment, api_savePayment: api_savePayment, api_savePp: api_savePp, api_ppLog: api_ppLog, api_staffReport: api_staffReport, api_usage: api_usage, api_blocks: api_blocks, api_saveBlock: api_saveBlock, api_deleteBlock: api_deleteBlock, api_trash: api_trash, api_restoreTrash: api_restoreTrash, api_cash: api_cash, api_saveCash: api_saveCash, api_deleteCash: api_deleteCash, api_forms: api_forms, api_saveForms: api_saveForms, api_saveConsent: api_saveConsent, api_consents: api_consents, api_uploadPhoto: api_uploadPhoto, api_sendLog: api_sendLog, api_salesReport: api_salesReport, api_checkMail: api_checkMail, api_send: api_send, api_completePast: api_completePast, api_needAttention: api_needAttention, api_rescanRequests: api_rescanRequests, api_consentLink: api_consentLink, api_esignList: api_esignList, api_esignView: api_esignView, api_photos: api_photos, api_deletePhoto: api_deletePhoto, api_sourceStats: api_sourceStats, api_importTvSales: api_importTvSales, api_seedPmuForms: api_seedPmuForms, api_ackBlock: api_ackBlock, api_ackAllBlocks: api_ackAllBlocks };
+  /* 예약: 같은 고객의 모든 예약 (고객ID가 없으면 그 예약 하나만) */
+  var dsh = sheetOf(SH.DATA), dl = dsh.getLastRow();
+  if (dl >= 2) {
+    var v = dsh.getRange(2, 1, dl - 1, D_HEAD.length).getValues();
+    for (var i = 0; i < v.length; i++) {
+      var hit = cid ? String(v[i][D.CUSTID - 1]).trim() === String(cid).trim()
+                    : String(v[i][D.RESNO - 1]) === String(resno);
+      if (!hit) continue;
+      var old = String(v[i][D.NAME - 1] || '').trim();
+      if (old === newName) continue;
+      dsh.getRange(i + 2, D.NAME).setValue(newName);
+      var memo = String(v[i][D.MEMO - 1] || '');
+      if (old.indexOf('*') >= 0 && memo.indexOf('네이버 표기') < 0) {
+        dsh.getRange(i + 2, D.MEMO).setValue((memo ? memo + ' / ' : '') + '네이버 표기: ' + old);
+      }
+      n.book++;
+    }
+  }
+  if (cid) {
+    /* 고객DB */
+    var csh = sheetOf(SH.CUST), rows = readCustomers();
+    for (var j = 0; j < rows.length; j++) {
+      if (String(rows[j][C.ID - 1]).trim() !== String(cid).trim()) continue;
+      if (String(rows[j][C.NAME - 1]).trim() !== newName) { csh.getRange(j + 2, C.NAME).setValue(newName); n.cust++; }
+      break;
+    }
+    /* 매출내역(5열 고객명), 선불포인트내역(3열 고객명) */
+    [[SH.SLOG, SLOG_HEAD, 4, 5, 'sales'], [SH.PPLOG, PP_HEAD, 2, 3, 'pp']].forEach(function (t) {
+      try {
+        var sh = ss().getSheetByName(t[0]);
+        if (!sh) return;
+        var last = sh.getLastRow();
+        if (last < 2) return;
+        var vals = sh.getRange(2, 1, last - 1, t[1].length).getValues();
+        for (var k = 0; k < vals.length; k++) {
+          if (String(vals[k][t[2] - 1]).trim() !== String(cid).trim()) continue;
+          if (String(vals[k][t[3] - 1]).trim() === newName) continue;
+          sh.getRange(k + 2, t[3]).setValue(newName);
+          n[t[4]]++;
+        }
+      } catch (e) { logError('이름 고치기 ' + t[0], e); }
+    });
+  }
+  SpreadsheetApp.flush();
+  return { ok: true, n: n };
+}
+
+function api_renameBooking(resno, name) {
+  try {
+    var dsh = sheetOf(SH.DATA);
+    var t = buildResnoIndex()[String(resno)];
+    if (!t) return { ok: false, msg: '예약을 찾지 못했습니다.' };
+    var row = dsh.getRange(t.r, 1, 1, D_HEAD.length).getValues()[0];
+    var cid = row[D.CUSTID - 1];
+    if (!cid) {
+      cid = matchOrCreateCustomer(String(name).trim(), row[D.PHONE - 1], row[D.SAFE - 1],
+                                  row[D.SHOP - 1], row[D.SOURCE - 1] || '수동');
+      dsh.getRange(t.r, D.CUSTID).setValue(cid);
+    }
+    return renameEverywhere(cid, resno, name);
+  } catch (e) {
+    logError('앱 예약 이름 고치기', e);
+    return { ok: false, msg: e.message };
+  }
+}
+
+function api_renameCustomer(id, name) {
+  try { return renameEverywhere(id, '', name); }
+  catch (e) { logError('앱 고객 이름 고치기', e); return { ok: false, msg: e.message }; }
+}
+
+
+  const __API = { api_login: api_login, api_savePins: api_savePins, api_setPassword: api_setPassword, api_bootstrap: api_bootstrap, api_home: api_home, api_day: api_day, api_range: api_range, api_month: api_month, api_updateBooking: api_updateBooking, api_addBooking: api_addBooking, api_searchCustomers: api_searchCustomers, api_customer: api_customer, api_saveCustomer: api_saveCustomer, api_addCustomer: api_addCustomer, api_deleteCustomer: api_deleteCustomer, api_customerFolder: api_customerFolder, api_sales: api_sales, api_menu: api_menu, api_saveMenu: api_saveMenu, api_payment: api_payment, api_savePayment: api_savePayment, api_savePp: api_savePp, api_ppLog: api_ppLog, api_staffReport: api_staffReport, api_usage: api_usage, api_blocks: api_blocks, api_saveBlock: api_saveBlock, api_deleteBlock: api_deleteBlock, api_trash: api_trash, api_restoreTrash: api_restoreTrash, api_cash: api_cash, api_saveCash: api_saveCash, api_deleteCash: api_deleteCash, api_forms: api_forms, api_saveForms: api_saveForms, api_saveConsent: api_saveConsent, api_consents: api_consents, api_uploadPhoto: api_uploadPhoto, api_sendLog: api_sendLog, api_salesReport: api_salesReport, api_checkMail: api_checkMail, api_send: api_send, api_completePast: api_completePast, api_needAttention: api_needAttention, api_rescanRequests: api_rescanRequests, api_consentLink: api_consentLink, api_esignList: api_esignList, api_esignView: api_esignView, api_photos: api_photos, api_deletePhoto: api_deletePhoto, api_sourceStats: api_sourceStats, api_importTvSales: api_importTvSales, api_seedPmuForms: api_seedPmuForms, api_ackBlock: api_ackBlock, api_ackAllBlocks: api_ackAllBlocks, api_renameBooking: api_renameBooking, api_renameCustomer: api_renameCustomer };
   return { __API, api, processBookingMails, autoSettle, sendReminderAdvance, sendReminderTomorrow,
            sendReminderToday, dailyMaintenance, setup, publicForm, publicSubmit, authOf, addPhotoRow, expiredPhotos, CUR: () => CUR };
 }

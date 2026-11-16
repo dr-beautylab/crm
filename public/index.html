@@ -753,8 +753,10 @@ function drawBooking(o){
       (o.request ? '<div class="kv"><span>요청사항</span><span style="text-align:right;max-width:62%">' + esc(o.request) + '</span></div>' : '') +
       '<div class="kv"><span>예약번호</span><span>' + esc(o.resno) + ' <span class="tag plum">' + esc(o.source||'') + '</span></span></div>' +
     '</div></div>' +
+    '<div class="field"><label>이름' + (o.name === '고객' ? ' — 네이버가 가린 이름이라 실명을 넣어 주세요' : '') + '</label>' +
+      '<input id="f-name" data-old="' + esc(o.name === '고객' ? '' : o.name) + '" value="' + esc(o.name === '고객' ? '' : o.name) + '" placeholder="실명"></div>' +
     '<div class="field"><label>연락처' + (!o.phone && !o.safe ? ' — 넣어야 문자가 나갑니다' : '') + '</label>' +
-      '<input id="f-phone" type="tel" inputmode="tel" value="' + esc(o.phone || o.safe) + '" placeholder="010-0000-0000"></div>' +
+      '<input id="f-phone" type="tel" inputmode="tel" value="' + esc(o.phone || o.safe) + '" placeholder="010-0000-0000 / 외국 번호는 +65 …"></div>' +
     '<div class="grid2">' +
       '<div class="field"><label>담당자</label><select id="f-staff">' + opts + '</select></div>' +
       '<div class="field"><label>상태</label><select id="f-status">' + st + '</select></div>' +
@@ -809,10 +811,17 @@ function saveBooking(resno){
     status: $('f-status').value,
     time: $('f-time').value
   };
+  var nm = $('f-name') ? $('f-name').value.trim() : '';
+  var nmChanged = nm && nm !== ($('f-name').dataset.old || '');
   toast('저장 중…');
   call('api_updateBooking',[p]).then(function(r){
     if(!r.ok){ toast(r.msg); return; }
-    closeSheet(); toast('저장했습니다');
+    if(nmChanged) return call('api_renameBooking',[resno, nm]);
+    return r;
+  }).then(function(r){
+    if(!r) return;
+    if(!r.ok){ toast(r.msg); return; }
+    closeSheet(); toast(nmChanged ? '저장했습니다 · 이 손님의 예약·매출 기록 이름도 바꿨습니다' : '저장했습니다');
     $('p-home').dataset.loaded = ''; pgClear();
     if(APP.page==='book') loadDay(); else renderHome();
   }).catch(fail);
@@ -1681,7 +1690,12 @@ function saveCustomer(id){
   toast('저장 중…');
   call('api_saveCustomer',[p]).then(function(r){
     if(!r.ok){ toast(r.msg); return; }
-    closeSheet(); toast('저장했습니다'); custSearch();
+    if(p.name && p.name.trim()) return call('api_renameCustomer',[id, p.name.trim()]);
+    return r;
+  }).then(function(r){
+    if(!r) return;
+    if(!r.ok){ toast(r.msg); return; }
+    closeSheet(); toast('저장했습니다'); custSearch(); pgClear(); $('p-home').dataset.loaded = '';
   }).catch(fail);
 }
 function askDelCustomer(id, btn){
