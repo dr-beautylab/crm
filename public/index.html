@@ -1478,7 +1478,8 @@ function consentLink(p, phone, form){
       ? '<div class="fld"><label>양식</label><select id="cl-form">' + r.forms.map(function(f){
           return '<option' + (f === r.form ? ' selected' : '') + '>' + esc(f) + '</option>'; }).join('') + '</select></div>'
       : '';
-    var ph = String(phone || '').replace(/[^0-9]/g, '');
+    /* 외국 번호는 앞의 +를 살려야 문자앱에서 국제 문자로 갑니다 */
+    var ph = String(phone || '').trim(); ph = (/^\+/.test(ph) ? '+' : '') + ph.replace(/[^0-9]/g, '');
     openSheet('<h2>' + consentTitle(p.shop) + ' 링크</h2>' + sel +
       '<div class="fld"><label>보낼 문구</label><textarea id="cl-msg" rows="5">' + esc(msg) + '</textarea></div>' +
       '<div class="btnrow">' +
