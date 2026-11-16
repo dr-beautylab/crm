@@ -13,7 +13,7 @@ export async function onRequestPost({ params, env, request }) {
   let body;
   try { body = await request.json(); } catch (e) { return json({ ok: false, msg: '잘못된 요청입니다.' }, 400); }
   const meta = { ua: request.headers.get('user-agent') || '', ip: request.headers.get('cf-connecting-ip') || '' };
-  meta.lang = ['en', 'ja'].includes(body && body.lang) ? body.lang : 'ko';
+  meta.lang = ['en', 'ja', 'zh'].includes(body && body.lang) ? body.lang : 'ko';
   const { result } = await run(env, g => g.publicSubmit(params.token, body, meta));
   return json(result);
 }
@@ -88,7 +88,7 @@ function has(k){ return LANG!=='ko' && TT.tr[k] && TT.tr[k][LANG] && TT.tr[k][LA
 function X(k, long, mid){ return '<span data-k="'+e(k)+'"'+(long?' data-long="1"':'')+'>'+e(k)+'</span>'+(mid||'')+'<span class="ko" data-ko="'+e(k)+'"></span>'; }
 function applyLang(){
   document.body.classList.toggle('xl', LANG!=='ko');
-  document.documentElement.lang = LANG;
+  document.documentElement.lang = LANG==='zh' ? 'zh-CN' : LANG;
   [].forEach.call(document.querySelectorAll('[data-k]'), function(el){ el.textContent = T(el.getAttribute('data-k')); });
   [].forEach.call(document.querySelectorAll('[data-ko]'), function(el){
     var k=el.getAttribute('data-ko'), prev=el.parentNode && el.parentNode.querySelector('[data-long]');
@@ -119,10 +119,10 @@ else {
   if(TT.multi){
     var saved=''; try{ saved=localStorage.getItem('formLang')||''; }catch(x){}
     var nav=(navigator.language||'').toLowerCase();
-    LANG = /^(ko|en|ja)$/.test(saved) ? saved : (/^ko/.test(nav) ? 'ko' : (/^ja/.test(nav) ? 'ja' : (nav ? 'en' : 'ko')));
+    LANG = /^(ko|en|ja|zh)$/.test(saved) ? saved : (/^ko/.test(nav) ? 'ko' : (/^ja/.test(nav) ? 'ja' : (/^zh/.test(nav) ? 'zh' : (nav ? 'en' : 'ko'))));
   }
   var h='<header><h1>'+X(F.form)+'</h1><p id="nm"></p>'+
-    (TT.multi?'<div class="langs"><button type="button" data-l="ko" onclick="setLang(\\'ko\\')">한국어</button><button type="button" data-l="en" onclick="setLang(\\'en\\')">English</button><button type="button" data-l="ja" onclick="setLang(\\'ja\\')">日本語</button></div>':'')+
+    (TT.multi?'<div class="langs"><button type="button" data-l="ko" onclick="setLang(\\'ko\\')">한국어</button><button type="button" data-l="en" onclick="setLang(\\'en\\')">English</button><button type="button" data-l="ja" onclick="setLang(\\'ja\\')">日本語</button><button type="button" data-l="zh" onclick="setLang(\\'zh\\')">中文</button></div>':'')+
     '</header><main>';
   Q.forEach(function(q,i){
     var cls='q'+(q.type==='안내'?' info':'')+(q.cond?' hide':'');

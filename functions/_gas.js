@@ -5550,7 +5550,7 @@ function publicSubmit(token, body, meta) {
   if (sign.length > 400000) return { ok: false, msg: '서명 이미지가 너무 큽니다. 다시 서명해 주세요.' };
   var L = findLink(token), v = L.v;
   var clean = qs.map(function (q, i) { return { q: q.q, type: q.type, v: ans[i] ? ans[i].v : '' }; });
-  var LN = { en: '영어', ja: '일본어' }[meta && meta.lang];
+  var LN = { en: '영어', ja: '일본어', zh: '중국어' }[meta && meta.lang];
   if (LN) clean.push({ q: '작성 언어', type: '단답', v: LN });
   var stamp = nowStr();
   sheetWithHead(ESIGN_SHEET, ESIGN_HEAD).appendRow([stamp, token, v[4], v[5], v[6], v[7], v[8],
