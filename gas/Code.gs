@@ -3279,11 +3279,13 @@ function api_searchCustomers(term, filter) {
     return { ok: true, list: rows.slice(0, 60), total: rows.length,
              grades: GRADES, tags: allTags() };
   }
+  /* 영문 이름은 대소문자 구분 없이 찾습니다 (ph → Phionna) */
+  var lt = term.toLowerCase();
   var hit = rows.filter(function (c) {
-    return c.name.indexOf(term) >= 0 ||
+    return String(c.name).toLowerCase().indexOf(lt) >= 0 ||
            last4(c.phone) === term || last4(c.safe) === term ||
            onlyDigits(c.phone).indexOf(onlyDigits(term)) >= 0 && onlyDigits(term).length >= 3 ||
-           String(c.tag || '').indexOf(term) >= 0 ||
+           String(c.tag || '').toLowerCase().indexOf(lt) >= 0 ||
            c.id === term;
   });
   return { ok: true, list: hit.slice(0, 60), total: hit.length,
