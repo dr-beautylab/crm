@@ -763,6 +763,11 @@ function drawBooking(o){
     '</div>' +
     '<div class="field"><label>시간</label><input id="f-time" value="' + esc(o.time) + '" placeholder="13:00"></div>' +
     '<button class="btn" onclick="saveBooking(\'' + esc(o.resno) + '\')">저장</button>' +
+    (o.custId ?
+      '<div class="sec-title">상담지 · 동의서</div><div class="card"><div class="card-b">' +
+        '<div id="esign-' + esc(o.custId) + '" class="sub" style="font-size:13px">불러오는 중…</div>' +
+        '<button class="btn sub" style="margin-top:8px" onclick="openCustomer(\'' + esc(o.custId) + '\')">👤 고객 화면 열기</button>' +
+      '</div></div>' : '') +
     '<div class="sec-title">결제 · 매출</div>' +
     '<div class="card"><div class="card-b">' +
       '<div class="kv"><span>실결제금액</span><b style="color:var(--plum)">' +
@@ -784,6 +789,7 @@ function drawBooking(o){
       '<button class="btn sub" onclick="closeSheet()">닫기</button>' +
     '</div>'
   );
+  if(o.custId) loadEsign(o.custId);
 }
 function askCancelBooking(resno, btn){
   if(btn.dataset.armed === '1'){ doCancelBooking(resno, btn); return; }
@@ -1571,8 +1577,8 @@ function loadEsign(custId){
     r.pending.forEach(function(x){ h += '<div style="padding:4px 0">⏳ ' + esc(x.form) + ' · 작성 대기 (~' + esc(x.exp.slice(5,16)) + ')</div>'; });
     r.list.forEach(function(x){ h += '<div style="padding:4px 0"><a href="#" onclick="viewEsign(\'' + esc(x.token) + '\');return false">✅ ' +
       esc(x.at.slice(0,16)) + ' · ' + esc(x.form) + '</a></div>'; });
-    box.innerHTML = h;
-  }).catch(function(){});
+    box.innerHTML = h || '아직 받은 서류가 없어요';
+  }).catch(function(){ box.innerHTML = ''; });
 }
 function viewEsign(token){
   call('api_esignView',[token]).then(function(r){
