@@ -2558,10 +2558,10 @@ function renderTool(){
       '</div></div>';
 
     if(isOwner()){
-      h += '<div class="sec-title">대표 비밀번호</div><div class="card"><div class="card-b">' +
+      h += '<div class="sec-title">대표 로그인</div><div class="card"><div class="card-b">' +
         '<p style="margin:0 0 10px;font-size:.88rem;color:var(--ink2)">' +
         (APP.boot.locked
-          ? '대표 로그인 비밀번호가 노출되었다고 생각되면 바꿔 주세요. 바꾸면 대표 비밀번호로 로그인한 기기는 모두 다시 로그인해야 해요.'
+          ? '비밀번호가 노출되었다고 생각되면 바꿔 주세요. 바꾸면 대표 비밀번호로 로그인한 기기는 모두 다시 로그인해야 해요.'
           : '⚠️ 아직 비밀번호가 없어요. 지금 정해 두면 주소를 아는 사람도 함부로 들어올 수 없어요.') +
         '</p>' +
         '<button class="btn' + (APP.boot.locked ? ' sub' : '') + '" onclick="openPw()">🔒 ' +
