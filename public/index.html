@@ -2561,7 +2561,7 @@ function renderTool(){
       h += '<div class="sec-title">대표 비밀번호</div><div class="card"><div class="card-b">' +
         '<p style="margin:0 0 10px;font-size:.88rem;color:var(--ink2)">' +
         (APP.boot.locked
-          ? '다른 사람이 알게 된 것 같으면 바꿔 주세요. 바꾸면 대표 비밀번호로 로그인한 기기는 모두 다시 로그인해야 해요.'
+          ? '대표 로그인 비밀번호가 노출되었다고 생각되면 바꿔 주세요. 바꾸면 대표 비밀번호로 로그인한 기기는 모두 다시 로그인해야 해요.'
           : '⚠️ 아직 비밀번호가 없어요. 지금 정해 두면 주소를 아는 사람도 함부로 들어올 수 없어요.') +
         '</p>' +
         '<button class="btn' + (APP.boot.locked ? ' sub' : '') + '" onclick="openPw()">🔒 ' +
@@ -2572,7 +2572,7 @@ function renderTool(){
       h += '<div class="sec-title">직원 로그인</div><div class="card"><div class="card-b">' +
         '<p style="margin:0 0 10px;font-size:.88rem;color:var(--ink2)">' +
         (pins.length
-          ? '직원마다 다른 번호를 주면, 누가 언제 들어왔는지 남습니다.'
+          ? '직원마다 다른 번호를 주면, 누가 언제 들어왔는지 남아요. 직원 로그인 번호가 노출되었다고 생각되면 아래 직원 번호 관리에서 바꿔 주세요.'
           : '직원에게 줄 번호를 만들어 주세요. 직원은 매출 화면을 볼 수 없습니다.') +
         '</p>' +
         (pins.length
