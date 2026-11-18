@@ -783,3 +783,39 @@ function api_renameCustomer(id, name) {
   try { return renameEverywhere(id, '', name); }
   catch (e) { logError('앱 고객 이름 고치기', e); return { ok: false, msg: e.message }; }
 }
+
+/* ---------- 문자(알리고) 설정: 대표만 ----------
+   키는 화면에 다시 보여주지 않고 뒷 4자리만 보여줍니다. 빈칸으로 저장하면 기존 값을 그대로 둡니다. */
+function smsCfgView_() {
+  var key = cfgStr('알리고 API키', '');
+  return { ok: true, userId: cfgStr('알리고 사용자ID', ''), sender: cfgStr('발신번호', ''),
+           keyTail: key ? key.slice(-4) : '', test: cfgOn('테스트 모드'), ready: aligoReady() };
+}
+function api_smsCfg() {
+  if (CUR.role !== 'owner') return { ok: false, msg: '대표만 볼 수 있어요.' };
+  return smsCfgView_();
+}
+function api_saveSmsCfg(p) {
+  try {
+    if (CUR.role !== 'owner') return { ok: false, msg: '대표만 바꿀 수 있어요.' };
+    p = p || {};
+    if (p.userId !== undefined && String(p.userId).trim()) setCfg('알리고 사용자ID', String(p.userId).trim());
+    if (p.key !== undefined && String(p.key).trim()) setCfg('알리고 API키', String(p.key).trim());
+    if (p.sender !== undefined && String(p.sender).trim()) setCfg('발신번호', String(p.sender).trim());
+    if (p.test !== undefined) setCfg('테스트 모드', p.test ? '사용' : '미사용');
+    _cfgCache = null;
+    return smsCfgView_();
+  } catch (e) { logError('문자 설정 저장', e); return { ok: false, msg: e.message }; }
+}
+/* 시험 발송: 테스트 모드와 상관없이 입력한 번호로 한 통 실제 발송하고, 알리고 답을 그대로 보여줍니다 */
+function api_testSms(to) {
+  try {
+    if (CUR.role !== 'owner') return { ok: false, msg: '대표만 쓸 수 있어요.' };
+    if (!aligoReady()) return { ok: false, msg: '사용자ID · API키 · 발신번호를 먼저 저장해 주세요.' };
+    var d = onlyDigits(to);
+    if (d.length < 10) return { ok: false, msg: '받을 번호를 확인해 주세요.' };
+    var r = sendSms(d, '[뷰로그] 문자 연결 시험 발송입니다.');
+    var j = {}; try { j = JSON.parse(r.raw); } catch (e) {}
+    return { ok: r.ok, msg: r.ok ? '보냈어요. 휴대폰에서 받았는지 확인해 주세요.' : ('알리고 답: ' + (j.message || r.raw || '알 수 없음')) };
+  } catch (e) { return { ok: false, msg: e.message }; }
+}

@@ -2478,6 +2478,42 @@ function openFormList(){
   }).catch(function(e){ closeSheet(); fail(e); });
 }
 
+/* ══════════ 문자 설정 (대표) ══════════ */
+function openSmsCfg(){
+  openSheet('<div class="spin"></div>');
+  call('api_smsCfg').then(function(r){
+    if(!r.ok){ closeSheet(); toast(r.msg); return; }
+    openSheet('<h2>문자 설정 (알리고)</h2>' +
+      '<p class="sub">' + (r.ready ? (r.test ? '✅ 입력 완료 · 🧪 지금은 테스트 모드라 실제로는 안 나가요' : '✅ 입력 완료 · 실제 발송 켜짐') : '⚙️ 아직 비어 있어요') + '</p>' +
+      '<div class="field"><label>알리고 아이디</label><input id="sc-uid" autocomplete="off" value="' + esc(r.userId) + '"></div>' +
+      '<div class="field"><label>API키' + (r.keyTail ? ' (저장됨 · 끝자리 ' + esc(r.keyTail) + ')' : '') + '</label>' +
+        '<input id="sc-key" autocomplete="off" placeholder="' + (r.keyTail ? '바꿀 때만 새로 넣으세요' : '알리고에서 발급받은 키') + '"></div>' +
+      '<div class="field"><label>발신번호 (알리고에 등록한 번호)</label><input id="sc-snd" type="tel" inputmode="tel" value="' + esc(r.sender) + '" placeholder="010-0000-0000"></div>' +
+      '<label class="ck" style="margin:6px 0 12px"><input type="checkbox" id="sc-test"' + (r.test ? ' checked' : '') + '><span>테스트 모드 (체크하면 실제로 보내지 않고 기록만 남겨요)</span></label>' +
+      '<button class="btn" onclick="saveSmsCfg(this)">저장</button>' +
+      '<div class="sec-title">시험 발송</div>' +
+      '<div class="field"><input id="sc-to" type="tel" inputmode="tel" placeholder="받아볼 내 번호 010-…"></div>' +
+      '<button class="btn sub" onclick="testSms(this)">📨 한 통 보내보기</button>' +
+      '<div id="sc-res" style="font-size:.85rem;margin-top:8px;white-space:pre-wrap"></div>' +
+      '<p class="sub" style="font-size:12px;margin-top:8px">시험 발송은 테스트 모드와 상관없이 실제로 한 통 나가요(문자 요금 차감).</p>' +
+      '<button class="btn sub" onclick="closeSheet()">닫기</button>');
+  }).catch(function(e){ closeSheet(); fail(e); });
+}
+function saveSmsCfg(btn){
+  busy(btn,'저장 중…');
+  call('api_saveSmsCfg',[{ userId:$('sc-uid').value, key:$('sc-key').value, sender:$('sc-snd').value, test:$('sc-test').checked }]).then(function(r){
+    done(btn);
+    if(!r.ok){ toast(r.msg||'저장하지 못했어요'); return; }
+    if(APP.boot){ APP.boot.smsReady = r.ready; APP.boot.testMode = r.test; }
+    toast('저장했어요'); openSmsCfg();
+  }).catch(function(e){ done(btn); fail(e); });
+}
+function testSms(btn){
+  var to = $('sc-to').value;
+  busy(btn,'보내는 중…');
+  call('api_testSms',[to]).then(function(r){ done(btn); var el=$('sc-res'); if(el){ el.style.color = r.ok ? 'var(--plum)' : 'var(--bad)'; el.textContent = (r.ok?'✅ ':'⚠️ ') + (r.msg || ''); } })
+    .catch(function(e){ done(btn); fail(e); });
+}
 /* ══════════ 도구 ══════════ */
 function renderTool(){
   var el = $('p-tool');
@@ -2545,6 +2581,11 @@ function renderTool(){
             '</table></div>'
           : '') +
         '<button class="btn sub" style="margin-top:10px" onclick="openPins()">👥 직원 번호 관리</button>' +
+        '</div></div>';
+
+      h += '<div class="sec-title">문자 설정 (알리고)</div><div class="card"><div class="card-b">' +
+        '<p style="margin:0 0 10px;font-size:.88rem;color:var(--ink2)">알리고에서 받은 아이디 · API키 · 등록한 발신번호를 넣는 곳이에요.</p>' +
+        '<button class="btn sub" onclick="openSmsCfg()">💬 문자 설정 열기</button>' +
         '</div></div>';
 
       h += '<div class="sec-title">시술 메뉴 · 금액</div><div class="card"><div class="card-b">' +
