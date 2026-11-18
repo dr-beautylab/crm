@@ -805,6 +805,10 @@ function api_saveSmsCfg(p) {
     if (p.key !== undefined && String(p.key).trim()) setCfg('알리고 API키', String(p.key).trim());
     if (p.sender !== undefined && String(p.sender).trim()) setCfg('발신번호', String(p.sender).trim());
     if (p.test !== undefined) setCfg('테스트 모드', p.test ? '사용' : '미사용');
+    if (p.auto) {
+      var A = { advance: '사전 알림 사용', tomorrow: '전일 알림 사용', today: '당일 알림 사용', confirm: '확정 즉시 안내 사용' };
+      Object.keys(A).forEach(function (k) { if (p.auto[k] !== undefined) setCfg(A[k], p.auto[k] ? '사용' : '미사용'); });
+    }
     _cfgCache = null;
     return smsCfgView_();
   } catch (e) { logError('문자 설정 저장', e); return { ok: false, msg: e.message }; }
