@@ -103,12 +103,12 @@ function api_consentLink(p) {
     if (!form) return { ok: false, msg: shop + ' 에 등록된 상담지·동의서 양식이 없습니다.' };
     /* 열려 있는 기간: 예약이 있으면 예약일 밤 11:59까지, 없으면 보낸 날 밤 11:59까지 */
     var token = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '').slice(0, 8);
-    var now = new Date(), today = fmt(now, 'yyyy-MM-dd'), resDay = '';
-    if (resno && row) resDay = String(row.date || '').slice(0, 10);
+    var now = new Date(), today = fmt(now, 'yyyy-MM-dd'), resDay = '', resTime = '';
+    if (resno && row) { resDay = String(row.date || '').slice(0, 10); resTime = String(row.time || ''); }
     if (!resDay && custId) {
       readData().forEach(function (v) {
         var o = rowToObj(v), d = String(o.date || '').slice(0, 10);
-        if (o.custId === custId && (!shop || o.shop === shop) && d >= today && (!resDay || d < resDay)) resDay = d;
+        if (o.custId === custId && (!shop || o.shop === shop) && o.status !== '취소' && d >= today && (!resDay || d < resDay)) { resDay = d; resTime = String(o.time || ''); }
       });
     }
     var exp;
@@ -120,6 +120,22 @@ function api_consentLink(p) {
     linkRows().s.appendRow([token, nowStr(), fmt(exp, 'yyyy-MM-dd HH:mm:ss'), '대기', custId, name, resno, shop, form, '', CUR.name]);
     var path = '/s/' + token;
     var text = (name ? String(name).replace(/님$/, '') + '님, ' : '') + '방문 전 ' + form + ' 작성 부탁드립니다.\n' + '#{링크}' + '\n(' + (exp.getMonth() + 1) + '월 ' + exp.getDate() + '일까지 작성해 주세요)';
+    /* 닥터뷰티랩: 원장님이 토스로 직접 보내는 시술 전 공통 안내 + 링크 (부위 상관없이 공통) */
+    if (shop === lineToShop('닥뷰')) {
+      var nm = name ? String(name).replace(/님$/, '') + '님, ' : '';
+      var when = '';
+      if (/^\d{4}-\d{2}-\d{2}$/.test(resDay)) {
+        var dd = new Date(Number(resDay.slice(0, 4)), Number(resDay.slice(5, 7)) - 1, Number(resDay.slice(8, 10)));
+        when = (dd.getMonth() + 1) + '월 ' + dd.getDate() + '일(' + '일월화수목금토'.charAt(dd.getDay()) + ')' + (resTime ? ' ' + resTime : '') + ' ';
+      }
+      text = '[닥터뷰티랩] ' + nm + when + '예약 안내드려요.\n\n' +
+        '· 아스피린·혈전약 등 피를 묽게 하는 약을 드시면 꼭 미리 알려 주세요. 시술이 어려울 수 있어요.\n' +
+        '· 시술 전날은 술을 피해 주세요.\n' +
+        '· 두피 시술은 당일 샴푸 후 오시고, 흑채·왁스는 쓰지 말아 주세요.\n' +
+        '· 건물 지하 주차 2시간 무료예요.\n\n' +
+        '상담지 미리 작성 (매장에서 써도 돼요)\n#{링크}\n\n' +
+        '늦으시면 미리 연락 주세요 010-2722-3093';
+    }
     return { ok: true, token: token, path: path, form: form, forms: formNamesFor(shop), text: text };
   } catch (e) { logError('동의서 링크', e); return { ok: false, msg: e.message }; }
 }
