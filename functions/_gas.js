@@ -5901,7 +5901,9 @@ function api_renameCustomer(id, name) {
 function smsCfgView_() {
   var key = cfgStr('알리고 API키', '');
   return { ok: true, userId: cfgStr('알리고 사용자ID', ''), sender: cfgStr('발신번호', ''),
-           keyTail: key ? key.slice(-4) : '', test: cfgOn('테스트 모드'), ready: aligoReady() };
+           keyTail: key ? key.slice(-4) : '', test: cfgOn('테스트 모드'), ready: aligoReady(),
+           auto: { advance: cfgOn('사전 알림 사용'), advDays: advanceDays(), advTime: cfgStr('사전 알림 시각', '14:00'),
+                   confirm: cfgOn('확정 즉시 안내 사용'), tomorrow: cfgOn('전일 알림 사용'), today: cfgOn('당일 알림 사용') } };
 }
 function api_smsCfg() {
   if (CUR.role !== 'owner') return { ok: false, msg: '대표만 볼 수 있어요.' };
