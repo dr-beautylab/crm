@@ -3320,6 +3320,61 @@ function api_customer(id) {
                     .filter(function (x) { return x; }) };
 }
 
+/* ── 연결 고객 양쪽 맞추기: A에 B를 넣으면 B에도 A가 들어가고, A에서 B를 빼면 B에서도 A가 빠집니다 ── */
+function relEntries(v) {
+  return String(v || '').split(',').map(function (x) { return x.trim(); }).filter(function (x) { return x; })
+    .map(function (x) {
+      var m = /^([^(]+?)\s*\((\d{4})\)\s*(?:\(([^)]*)\))?/.exec(x);
+      return m ? { name: m[1].trim(), p4: m[2], rel: (m[3] || '').trim(), raw: x } : { raw: x };
+    });
+}
+function relReverse(r) {
+  if (r === '소개해 준 분') return '소개받은 분';
+  if (r === '소개받은 분') return '소개해 준 분';
+  if (['배우자', '가족', '친구', '지인', '직장 동료'].indexOf(r) >= 0) return r;
+  return '';  /* '언니'처럼 직접 쓴 관계는 반대말을 알 수 없어 이름만 연결 */
+}
+function syncRelations(rows, me, oldRel, newRel, newName, newPhone) {
+  var sh = sheetOf(SH.CUST);
+  var myName = String(newName || rows[me][C.NAME - 1]).trim();
+  var myP4 = last4(onlyDigits(newPhone !== undefined ? newPhone : (rows[me][C.PHONE - 1] || rows[me][C.SAFE - 1])));
+  if (!myName || !myP4) return;
+  var myKey = myName + '(' + myP4 + ')';
+  function findRow(e) {
+    for (var k = 0; k < rows.length; k++) {
+      if (k === me) continue;
+      if (String(rows[k][C.NAME - 1]).trim() === e.name &&
+          (last4(onlyDigits(rows[k][C.PHONE - 1])) === e.p4 || last4(onlyDigits(rows[k][C.SAFE - 1])) === e.p4)) return k;
+    }
+    return -1;
+  }
+  var olds = relEntries(oldRel).filter(function (e) { return e.name; });
+  var news = relEntries(newRel).filter(function (e) { return e.name; });
+  var keyOf = function (e) { return e.name + '(' + e.p4 + ')'; };
+  var newKeys = news.map(keyOf);
+  /* 새로 넣었거나 관계가 바뀐 사람: 상대 쪽에 나를 넣기 */
+  news.forEach(function (e) {
+    var k = findRow(e); if (k < 0) return;
+    var theirs = relEntries(rows[k][C.REL - 1]);
+    var back = relReverse(e.rel);
+    var line = myKey + (back ? ' (' + back + ')' : '');
+    var at = -1;
+    theirs.forEach(function (t, j) { if (t.name && keyOf(t) === myKey) at = j; });
+    if (at >= 0) { if (!back || theirs[at].rel === back) return; theirs[at] = { raw: line }; }
+    else theirs.push({ raw: line });
+    var v = theirs.map(function (t) { return t.raw; }).join(', ');
+    sh.getRange(k + 2, C.REL).setValue(v); rows[k][C.REL - 1] = v;
+  });
+  /* 뺀 사람: 상대 쪽에서도 나를 빼기 */
+  olds.forEach(function (e) {
+    if (newKeys.indexOf(keyOf(e)) >= 0) return;
+    var k = findRow(e); if (k < 0) return;
+    var theirs = relEntries(rows[k][C.REL - 1]).filter(function (t) { return !(t.name && keyOf(t) === myKey); });
+    var v = theirs.map(function (t) { return t.raw; }).join(', ');
+    sh.getRange(k + 2, C.REL).setValue(v); rows[k][C.REL - 1] = v;
+  });
+}
+
 function api_saveCustomer(p) {
   try {
     var sh = sheetOf(SH.CUST);
@@ -3340,7 +3395,11 @@ function api_saveCustomer(p) {
         if (p.birth !== undefined)   sh.getRange(r, C.BIRTH).setValue(p.birth ? toDate(p.birth) : '');
         if (p.staff !== undefined)   sh.getRange(r, C.STAFF).setValue(p.staff);
         if (p.prepaid !== undefined) sh.getRange(r, C.PREPAID).setValue(p.prepaid === '' ? '' : Number(p.prepaid));
-        if (p.rel !== undefined)     sh.getRange(r, C.REL).setValue(p.rel);
+        if (p.rel !== undefined) {
+          var oldRel = String(rows[i][C.REL - 1] || '');
+          sh.getRange(r, C.REL).setValue(p.rel);
+          try { syncRelations(rows, i, oldRel, String(p.rel || ''), p.name, p.phone); } catch (er) { logError('연결고객 맞추기', er); }
+        }
         if (p.needle !== undefined)  sh.getRange(r, C.NEEDLE).setValue(p.needle);
         if (p.pigment !== undefined) sh.getRange(r, C.PIGMENT).setValue(p.pigment);
         if (p.tone !== undefined)    sh.getRange(r, C.TONE).setValue(p.tone);

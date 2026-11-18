@@ -337,12 +337,28 @@ function shopShort(name){
 }
 
 /* ══════════ 시트(모달) ══════════ */
+/* ── 뒤로 가기: 앱이 꺼지지 않고 '열린 창 닫기 → 이전 탭'으로 돌아가게 합니다 ── */
+var NAV = { stack: [], busy: false, skip: 0 };
+function navPush(kind){ NAV.stack.push(kind); try { history.pushState({ n: NAV.stack.length }, ''); } catch(e){} }
+window.addEventListener('popstate', function(){
+  if(NAV.skip > 0){ NAV.skip--; return; }
+  var kind = NAV.stack.pop();
+  if(kind === 'mini'){ var d = $('mini'); if(d) d.remove(); }
+  else if(kind === 'sheet'){ NAV.busy = true; closeSheet(); NAV.busy = false; }
+  else if(kind && kind.indexOf('tab:') === 0){ NAV.busy = true; switchTab(kind.slice(4)); NAV.busy = false; }
+  else { try { history.pushState({ n: 0 }, ''); } catch(e){} toast('앱을 닫으려면 홈 버튼을 눌러 주세요'); }
+});
+try { history.replaceState({ n: 0 }, ''); history.pushState({ n: 0 }, ''); } catch(e){}
 function openSheet(html){
   $('sheet-b').innerHTML = html;
+  var was = $('sheet').classList.contains('on');
   $('sheet').classList.add('on'); $('mask').classList.add('on');
+  if(!was) navPush('sheet');
 }
 function closeSheet(){
+  var was = $('sheet').classList.contains('on');
   $('sheet').classList.remove('on'); $('mask').classList.remove('on');
+  if(was && !NAV.busy && NAV.stack[NAV.stack.length-1] === 'sheet'){ NAV.stack.pop(); NAV.skip++; try { history.back(); } catch(e){ NAV.skip--; } }
 }
 $('mask').addEventListener('click', closeSheet);
 
@@ -375,6 +391,7 @@ function pgClear(){ PGCACHE = {}; }
 
 function go(p, force){
   if((p === 'sale' || p === 'cash') && !canSales()){ p = 'home'; }
+  if(!NAV.busy && APP.page && APP.page !== p) navPush('tab:' + APP.page);
   PGFORCE = !!force;
   APP.page = p;
   document.querySelectorAll('.page').forEach(function(s){ s.classList.remove('on'); });
@@ -1458,8 +1475,12 @@ function openSheetMini(h){
   d.innerHTML = '<div style="background:#fff;width:100%;padding:18px 16px 26px;border-radius:16px 16px 0 0">' + h + '</div>';
   d.onclick = function(e){ if(e.target === d) closeMini(); };
   document.body.appendChild(d);
+  navPush('mini');
 }
-function closeMini(){ var d = $('mini'); if(d) d.remove(); }
+function closeMini(){
+  var d = $('mini'); if(!d) return; d.remove();
+  if(NAV.stack[NAV.stack.length-1] === 'mini'){ NAV.stack.pop(); NAV.skip++; try { history.back(); } catch(e){ NAV.skip--; } }
+}
 function thumbOf(file){
   return new Promise(function(res){
     if(!/^image\//.test(file.type)){ res(null); return; }
