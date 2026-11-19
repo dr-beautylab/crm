@@ -17,18 +17,18 @@ export const I18N = {
  },
  "눈썹 상담·동의서": {
   "en": "Eyebrow Consultation & Consent Form",
-  "ja": "眉 カウンセリング・同意書",
-  "zh": "眉毛 咨询表·同意书"
+  "ja": "眉カウンセリングシート・同意書",
+  "zh": "眉毛咨询表·同意书"
  },
  "입술 상담·동의서": {
   "en": "Lip Consultation & Consent Form",
-  "ja": "唇 カウンセリング・同意書",
-  "zh": "唇部 咨询表·同意书"
+  "ja": "唇カウンセリングシート・同意書",
+  "zh": "唇部咨询表·同意书"
  },
  "두피 상담·동의서": {
   "en": "Scalp Consultation & Consent Form",
-  "ja": "頭皮 カウンセリング・同意書",
-  "zh": "头皮 咨询表·同意书"
+  "ja": "頭皮カウンセリングシート・同意書",
+  "zh": "头皮咨询表·同意书"
  },
  "성함": {
   "en": "Full name",
@@ -92,12 +92,12 @@ export const I18N = {
  },
  "신규": {
   "en": "First visit",
-  "ja": "初めて",
+  "ja": "初めてのご来店",
   "zh": "首次到店"
  },
  "재방문": {
   "en": "Returning customer",
-  "ja": "再来店",
+  "ja": "2回目以降のご来店",
   "zh": "再次到店"
  },
  "방문경로": {
@@ -151,9 +151,9 @@ export const I18N = {
   "zh": "介绍人姓名"
  },
  "예: 김○○ 님 (선택)": {
-  "en": "e.g., Ms. Kim (optional)",
+  "en": "e.g., Kim Minji (optional)",
   "ja": "例：キム様（任意）",
-  "zh": "例：金女士（选填）"
+  "zh": "例：金敏智（选填）"
  },
  "어떤 경로로 오셨는지 알려 주세요": {
   "en": "Please tell us how you found us",
@@ -217,8 +217,8 @@ export const I18N = {
  },
  "민감하거나 예민한 피부이신가요?": {
   "en": "Do you have sensitive skin?",
-  "ja": "敏感肌ですか？",
-  "zh": "您是敏感肌肤吗？"
+  "ja": "肌が敏感な方ですか？",
+  "zh": "您的皮肤是否比较敏感？"
  },
  "시술 부위에 상처, 염증, 발진 등 피부 이상이 있나요?": {
   "en": "Is there any skin problem on the treatment area, such as a wound, inflammation or rash?",
@@ -252,11 +252,11 @@ export const I18N = {
  },
  "무엇인지 알려 주세요": {
   "en": "Please tell us what it is",
-  "ja": "何か教えてください",
+  "ja": "具体的に教えてください",
   "zh": "请说明是什么"
  },
  "진단받았거나 지금 치료 중인 질병이 있나요?": {
-  "en": "Do you have any condition you have been diagnosed with or are currently being treated for?",
+  "en": "Have you been diagnosed with, or are you currently being treated for, any medical condition?",
   "ja": "診断を受けた、または現在治療中の病気はありますか？",
   "zh": "您是否有已确诊或正在治疗中的疾病？"
  },
@@ -337,7 +337,7 @@ export const I18N = {
  },
  "최근 24시간 안에 술을 드셨나요?": {
   "en": "Have you had any alcohol in the last 24 hours?",
-  "ja": "最近24時間以内にお酒を飲みましたか？",
+  "ja": "この24時間以内にお酒を飲まれましたか？",
   "zh": "最近24小时内您是否饮过酒？"
  },
  "임신 중이거나 수유 중이신가요?": {
@@ -346,8 +346,8 @@ export const I18N = {
   "zh": "您是否正在怀孕或哺乳期？"
  },
  "그 밖에 원장님께 알려 주실 내용": {
-  "en": "Anything else you'd like to tell the director",
-  "ja": "その他、院長にお伝えしたいこと",
+  "en": "Anything else you'd like us to know",
+  "ja": "その他、施術担当者にお伝えしたいこと",
   "zh": "其他想告诉院长的事项"
  },
  "시술 후 주의사항\n\n· 일주일간 시술 부위에 물이나 마찰이 닿지 않게 주의해 주세요. 눈썹 화장, 클렌징오일, 유분기 많은 화장품은 일주일 정도 피해 주세요.\n· 재생크림을 아침·저녁 세안 시 얇게 발라 주세요. 면봉에 색소가 묻어 나올 수 있어요. (너무 많이 바르면 색소 안착에 방해가 돼요.)\n· 회복 기간(최소 1주) 동안 음주와 흡연, 사우나, 땀이 많이 나는 운동은 염증을 일으킬 수 있어 자제해 주세요.\n· 딱지를 억지로 떼지 마세요. 억지로 떼면 색소가 고르게 안착되지 않거나 색이 덜 나올 수 있어요.\n· 1달 동안 시간을 두고 지켜봐 주세요. 점점 예쁘게 색이 올라와요.": {
@@ -361,8 +361,8 @@ export const I18N = {
   "zh": "操作后注意事项\n\n・操作后角质脱落期间嘴唇会非常干燥，请经常涂抹润唇膏保湿。（非常重要）\n・请注意不要让操作部位沾水。洗脸、刷牙时不要让肥皂和水碰到嘴唇，淋浴时也请小心。\n・请让角质自然脱落。用手撕或揉搓可能导致颜色不均或发炎。\n・请避免辛辣、过烫的食物以及葡萄酒等对嘴唇有刺激的饮食，建议用吸管喝饮料。\n・口红、唇釉等彩妆请在伤口完全愈合后再使用。（有色润唇膏7天后，显色较强的唇釉1个月后）\n・肿胀程度因人而异，可能持续2～3天。如出现疱疹水泡，请立即前往皮肤科就诊。\n・恢复期间（至少1周）请避免饮酒、吸烟、桑拿及大量出汗的运动，以免引起炎症。\n・为了让颜色保持更久，平时也请坚持用润唇膏保湿。\n・一个月内的颜色变化是正常的恢复过程，请耐心观察。"
  },
  "시술 후 주의사항\n\n· 시술 24시간 뒤부터 샴푸해 주세요. 손에서 거품을 충분히 낸 뒤 자극 없이 감고 시원한 물로 헹궈 주세요.\n· 회복 기간(최소 1주) 동안 음주와 흡연, 사우나, 땀이 많이 나는 운동은 염증을 일으킬 수 있어 자제해 주세요.\n· 각질은 저절로 떨어지게 두세요. 손으로 떼거나 문지르면 색이 고르지 않게 되거나 염증이 생길 수 있어요.\n· 첫 샴푸 때 머리카락에 묻어 있던 색소가 염색물처럼 빠질 수 있어요. 두피에 넣은 색소가 빠지는 게 아니니 걱정 마시고, 어두운 수건을 써 주세요.\n· 두피에 남은 색소가 베개에 묻을 수 있어요. 어두운 수건을 깔고 주무세요.\n· 염색이나 펌은 2주 이상 피해 주세요. (가능하면 리터치 시술 1달 뒤부터)\n· 1달 동안 색이 변하는 건 자연스러운 과정이에요. 시간을 두고 지켜봐 주세요.": {
-  "en": "Aftercare\n\n· You can wash your hair from 24 hours after the procedure. Work up a good lather in your hands first, wash gently without irritating the scalp, and rinse with cool water.\n· During recovery (at least 1 week), please avoid alcohol, smoking, saunas and exercise that makes you sweat a lot, as they can cause inflammation.\n· Let the peeling skin come off on its own. Picking or rubbing it can cause uneven color or inflammation.\n· During your first shampoo, pigment left on your hair may rinse out like hair dye. This is not the pigment in your scalp, so don't worry. Please use a dark towel.\n· Leftover pigment on your scalp may stain your pillow. Please sleep with a dark towel over it.\n· Avoid hair coloring or perms for at least 2 weeks. (If possible, wait until 1 month after your touch-up.)\n· Color changes over the first month are a natural part of healing. Please give it time.",
-  "ja": "施術後の注意事項\n\n・シャンプーは施術24時間後から可能です。手で十分に泡立ててから刺激を与えないように洗い、冷たい水ですすいでください。\n・回復期間中（最低1週間）は、飲酒・喫煙・サウナ・汗をたくさんかく運動は炎症の原因になるためお控えください。\n・角質は自然にはがれるまでそのままにしてください。手ではがしたりこすったりすると、色ムラや炎症の原因になります。\n・初めてのシャンプーの際、髪に付いていた色素がカラー剤のように流れ出ることがあります。頭皮に入れた色素が抜けているわけではないのでご安心ください。濃い色のタオルをお使いください。\n・頭皮に残った色素が枕に付くことがあります。濃い色のタオルを敷いてお休みください。\n・ヘアカラーやパーマは2週間以上お控えください。（できればリタッチ施術の1か月後から）\n・1か月ほどの色の変化は自然な経過です。時間をかけて様子を見てください。",
+  "en": "Aftercare\n\n· You can wash your hair from 24 hours after the procedure. Work up a good lather in your hands first, wash gently without irritating the scalp, and rinse with cool water.\n· During recovery (at least 1 week), please avoid alcohol, smoking, saunas and exercise that makes you sweat a lot, as they can cause inflammation.\n· Let the peeling skin come off on its own. Picking or rubbing it can cause uneven color or inflammation.\n· During your first shampoo, pigment left on your hair may rinse out like hair dye. This is not the pigment in your scalp, so don't worry. Please use a dark towel.\n· Leftover pigment on your scalp may stain your pillow. Please lay a dark towel over your pillow when you sleep.\n· Avoid hair coloring or perms for at least 2 weeks. (If possible, wait until 1 month after your touch-up.)\n· Color changes over the first month are a natural part of healing. Please give it time.",
+  "ja": "施術後の注意事項\n\n・シャンプーは施術24時間後から可能です。手で十分に泡立ててから刺激を与えないように洗い、冷ための水ですすいでください。\n・回復期間中（最低1週間）は、飲酒・喫煙・サウナ・汗をたくさんかく運動は炎症の原因になるためお控えください。\n・角質は自然にはがれるまでそのままにしてください。手ではがしたりこすったりすると、色ムラや炎症の原因になります。\n・初めてのシャンプーの際、髪に付いていた色素がカラー剤のように流れ出ることがあります。頭皮に入れた色素が抜けているわけではないのでご安心ください。濃い色のタオルをお使いください。\n・頭皮に残った色素が枕に付くことがあります。濃い色のタオルを敷いてお休みください。\n・ヘアカラーやパーマは2週間以上お控えください。（できればリタッチ施術の1か月後から）\n・1か月ほどの色の変化は自然な経過です。時間をかけて様子を見てください。",
   "zh": "操作后注意事项\n\n・操作24小时后可以洗头。请先在手上充分起泡，再轻柔无刺激地清洗，并用凉水冲洗。\n・恢复期间（至少1周）请避免饮酒、吸烟、桑拿及大量出汗的运动，以免引起炎症。\n・请让角质自然脱落。用手撕或揉搓可能导致颜色不均或发炎。\n・第一次洗头时，沾在头发上的色料可能会像染发剂一样被冲下来。这不是头皮里的色料，请不用担心，并使用深色毛巾。\n・头皮上残留的色料可能会沾到枕头上，请铺上深色毛巾再睡。\n・请至少2周内避免染发或烫发。（如可以，请在补色操作1个月后再进行）\n・一个月内的颜色变化是正常的恢复过程，请耐心观察。"
  },
  "시술 후 주의사항": {
@@ -586,14 +586,14 @@ export const I18N = {
   "zh": "本人签名"
  },
  "손가락으로 서명해 주세요": {
-  "en": "Sign with your finger",
+  "en": "Please sign with your finger",
   "ja": "指で署名してください",
   "zh": "请用手指签名"
  },
  "지우기": {
   "en": "Clear",
-  "ja": "消す",
-  "zh": "清除"
+  "ja": "書き直す",
+  "zh": "重写"
  },
  "제출하기": {
   "en": "Submit",
@@ -617,7 +617,7 @@ export const I18N = {
  },
  "서명을 해주세요": {
   "en": "Please sign",
-  "ja": "署名してください",
+  "ja": "ご署名ください",
   "zh": "请签名"
  },
  "인터넷 연결을 확인해 주세요": {
