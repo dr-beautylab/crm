@@ -492,7 +492,10 @@ function fillChartFromForm_(cid, clean, qs, ans, lang, stamp) {
   for (var i = 0; i < rows.length; i++) if (String(rows[i][C.ID - 1]).trim() === cid) { r = i; break; }
   if (r < 0) return;
   var row = rows[r], R = r + 2;
-  function shown(i) { return i < qs.length && shownQ_(qs, ans, i); }
+  function shown(i) {
+    if (qs) return i < qs.length && shownQ_(qs, ans, i);
+    var x = clean[i] && clean[i].v; return !(x === '' || x === null || x === undefined || (Array.isArray(x) && !x.length));
+  }
   function val(x) { return Array.isArray(x) ? x.join(', ') : (x === true || x === false ? '' : String(x || '').trim()); }
   function byQ(q) { for (var i = 0; i < clean.length; i++) if (clean[i].q === q && shown(i)) return val(clean[i].v); return ''; }
   function empty(col) { return String(row[col - 1] || '').trim() === ''; }
@@ -532,15 +535,36 @@ function fillChartFromForm_(cid, clean, qs, ans, lang, stamp) {
       if (L.length) notes.push('질병: ' + L.join(', '));
       continue;
     }
-    if (a !== '예' || qs[k].type !== '단일선택') continue;
+    if (a !== '예' || clean[k].type !== '단일선택') continue;
     var label = q;
     Object.keys(CAUTION_LABEL).some(function (key) { if (q.indexOf(key) === 0) { label = CAUTION_LABEL[key]; return true; } return false; });
     /* 바로 다음 칸이 이 질문의 '자세히' 칸이면 같이 붙여요 */
-    var nx = qs[k + 1], det = (nx && nx.cond === q + '=예' && shown(k + 1)) ? val(clean[k + 1].v) : '';
+    var nx = qs ? qs[k + 1] : null, nc = clean[k + 1];
+    var isDet = qs ? (nx && nx.cond === q + '=예') : (nc && nc.type === '단답');
+    var det = (isDet && shown(k + 1)) ? val(nc.v) : '';
     notes.push(label + (det ? ': ' + det : ''));
   }
   if (start >= 0) sh.getRange(R, C.CAUTION).setValue(notes.length ? '[' + String(stamp).slice(0, 10) + ' 상담지] ' + notes.join(' · ') : '');
   SpreadsheetApp.flush();
+}
+
+/* 이미 받은 전자 상담지·동의서를 오래된 것부터 차트에 다시 반영 (대표만) */
+function api_backfillCharts() {
+  if (CUR.role !== 'owner') return { ok: false, msg: '대표만 쓸 수 있습니다.' };
+  var s = sheetWithHead(ESIGN_SHEET, ESIGN_HEAD), last = s.getLastRow();
+  if (last < 2) return { ok: true, n: 0, people: 0 };
+  var rows = s.getRange(2, 1, last - 1, ESIGN_HEAD.length).getValues();
+  rows.sort(function (a, b) { return String(a[0]).localeCompare(String(b[0])); });
+  var n = 0, seen = {};
+  rows.forEach(function (r) {
+    var cid = String(r[2] || '').trim(); if (!cid) return;
+    var clean = []; try { clean = JSON.parse(String(r[7] || '[]')); } catch (e) { return; }
+    var langRow = clean.filter(function (x) { return x.q === '작성 언어'; })[0];
+    var lang = langRow ? ({ '영어': 'en', '일본어': 'ja', '중국어': 'zh' }[langRow.v] || 'ko') : 'ko';
+    try { fillChartFromForm_(cid, clean, null, null, lang, String(r[0])); n++; seen[cid] = 1; } catch (e) { logError('차트 다시 반영', e); }
+  });
+  try { recomputeCustomerStats(); } catch (e) {}
+  return { ok: true, n: n, people: Object.keys(seen).length };
 }
 
 /* ---------- 닥터뷰티랩 눈썹·입술·두피 상담·동의서 + 공통 보호자 동의 (대표만 실행) ----------

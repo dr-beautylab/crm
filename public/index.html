@@ -2612,6 +2612,14 @@ function testSms(btn){
     .catch(function(e){ done(btn); fail(e); });
 }
 /* ══════════ 도구 ══════════ */
+function doBackfill(btn){
+  btn.disabled = true; toast('차트에 넣는 중…');
+  call('api_backfillCharts',[]).then(function(r){
+    btn.disabled = false;
+    if(!r.ok){ toast(r.msg); return; }
+    toast('서식 ' + r.n + '건 · 고객 ' + r.people + '명 차트에 넣었어요'); pgClear();
+  }).catch(function(e){ btn.disabled = false; fail(e); });
+}
 function renderTool(){
   var el = $('p-tool');
   if(pgHit('p-tool','tool')) return;
@@ -2652,6 +2660,7 @@ function renderTool(){
     h += '<div class="sec-title">정리</div><div class="card"><div class="card-b">' +
       '<button class="btn sub" onclick="doRescan(this)" style="margin-bottom:9px">🔍 요청사항에서 실명·연락처 찾기</button>' +
       '<button class="btn sub" onclick="doComplete(this)">✅ 지난 예약 이용완료 처리 (회차 차감)</button>' +
+      (isOwner() ? '<button class="btn sub" style="margin-top:9px" onclick="doBackfill(this)">📋 받은 상담지·동의서를 고객 차트에 넣기</button>' : '') +
       '</div></div>';
 
     if(isOwner()){
