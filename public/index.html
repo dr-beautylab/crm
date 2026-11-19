@@ -1217,7 +1217,7 @@ var CFIL = '';
 function custFilter(v){ CFIL = (CFIL===v ? '' : v); custSearch(); }
 function drawFilter(r){
   var box = $('c-filter'); if(!box) return;
-  var opts = ['VIP','단골','신규','재방문','휴면','블랙리스트','선불보유','이번달생일','번호없음'];
+  var opts = ['VIP','단골','신규','재방문','휴면','블랙리스트','선불보유','이번달생일','번호없음','외국인'];
   (r.tags||[]).forEach(function(t){ if(opts.indexOf(t)<0) opts.push(t); });
   box.style.display = 'flex';
   box.innerHTML = opts.map(function(o){
@@ -1247,9 +1247,10 @@ function custSearch(){
         (r.total>r.list.length?' (앞 '+r.list.length+'명)':'') + '</div><div class="card">';
       r.list.forEach(function(c){
         var t = gradeTag(c.grade);
-        if(!c.phone && !c.safe) t += ' <span class="tag warn">번호없음</span>';
+        t += langTag(c);
+        if(!c.phone && !c.safe && !c.cid) t += ' <span class="tag warn">번호없음</span>';
         else if(c.total!==null && c.left!==null && c.left<=1) t += ' <span class="tag bad">잔여 '+c.left+'</span>';
-        var sub = (c.phone || c.safe || '연락처 미입력') + ' · ' + c.visits + '회';
+        var sub = (c.phone || c.safe || (c.cid ? (c.cway ? c.cway + ' ' : '') + c.cid : '연락처 미입력')) + ' · ' + c.visits + '회';
         if(c.prepaid) sub += ' · 선불 ' + won(c.prepaid);
         if(c.tag) sub += ' · ' + c.tag;
         h += '<button class="bk" onclick="openCustomer(\'' + esc(c.id) + '\')">' +
@@ -1325,6 +1326,17 @@ function relOpen(name, p4){
     if(hit) openCustomer(hit.id); else toast('그 고객을 찾지 못했어요');
   }).catch(fail);
 }
+/* 연락 방법 바로가기 · 외국어 표시 */
+function langTag(c){ return (c.lang && c.lang !== '한국어') ? ' <span class="tag plum">' + esc(c.lang) + '</span>' : ''; }
+function contactLink(c){
+  var id = String(c.cid||'').trim().replace(/^@/,''); if(!id) return '';
+  var u = '';
+  if(c.cway === '인스타 DM') u = 'https://ig.me/m/' + encodeURIComponent(id);
+  else if(c.cway === '왓츠앱') u = 'https://wa.me/' + id.replace(/[^0-9]/g,'');
+  else if(c.cway === '라인') u = 'https://line.me/R/ti/p/~' + encodeURIComponent(id);
+  if(!u) return '';
+  return '<a class="btn sub" style="display:block;text-align:center;margin:0 0 8px;text-decoration:none" href="' + u + '" target="_blank" rel="noopener">💬 ' + esc(c.cway) + '로 연락하기</a>';
+}
 function openCustomer(id){
   openSheet('<div class="spin"></div>');
   call('api_customer',[id]).then(function(r){
@@ -1357,7 +1369,7 @@ function drawCustomer(){
   }).join('');
 
   var h =
-    '<h2>' + esc(c.name) + (c.name.indexOf('*')>=0 ? ' <span class="tag warn">실명 미입력</span>' : '') + '</h2>' +
+    '<h2>' + esc(c.name) + langTag(c) + (c.name.indexOf('*')>=0 ? ' <span class="tag warn">실명 미입력</span>' : '') + '</h2>' +
     '<p class="sub">' + esc(shopShort(c.shop||'')) + ' · 총 ' + c.visits + '회 방문' + (c.last?' · 최근 '+c.last:'') + '</p>' +
 
     '<div class="tiles">' +
@@ -1381,6 +1393,14 @@ function drawCustomer(){
       '<div class="field"><label>실명</label><input id="k-name" value="' + esc(c.name) + '"></div>' +
       '<div class="field"><label>연락처</label><input id="k-phone" type="tel" inputmode="tel" value="' + esc(c.phone||c.safe) + '"></div>' +
     '</div>' +
+    '<div class="grid2">' +
+      '<div class="field"><label>응대 언어</label><select id="k-lang">' +
+        selOpts(['한국어','영어','중국어','일본어','기타'], c.lang, '선택 안 함') + '</select></div>' +
+      '<div class="field"><label>연락 방법</label><select id="k-cway">' +
+        selOpts(['전화·문자','인스타 DM','라인','왓츠앱','위챗','카카오톡','기타'], c.cway, '선택 안 함') + '</select></div>' +
+    '</div>' +
+    '<div class="field"><label>연락 아이디 (인스타·라인 등)</label><input id="k-cid" value="' + esc(c.cid||'') + '" placeholder="예) @yueqiang"></div>' +
+    contactLink(c) +
     '<div class="grid2">' +
       '<div class="field"><label>성별</label><select id="k-gender">' +
         selOpts(['여','남'], c.gender, '선택 안 함') + '</select></div>' +
@@ -1866,6 +1886,7 @@ function saveCustomer(id){
             product:$('k-product').value, total:$('k-total').value, memo:$('k-memo').value,
             gender:vOf('k-gender'), birth:vOf('k-birth'), staff:vOf('k-staff'),
             rel:vOf('k-rel'), grade:vOf('k-grade'), tag:vOf('k-tag'),
+            lang:vOf('k-lang'), cway:vOf('k-cway'), cid:vOf('k-cid'),
             needle:vOf('k-needle'), pigment:vOf('k-pigment'), tone:vOf('k-tone') };
   Object.keys(p).forEach(function(k){ if(p[k]===undefined) delete p[k]; });
   toast('저장 중…');

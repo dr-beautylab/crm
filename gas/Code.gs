@@ -88,13 +88,13 @@ var C = {
   ID:1, NAME:2, PHONE:3, SAFE:4, SHOP:5, FIRST:6, LAST:7, VISITS:8,
   PRODUCT:9, TOTAL:10, USED:11, LEFT:12, MEMO:13, SOURCE:14, FOLDER:15, NEXT:16,
   GENDER:17, BIRTH:18, STAFF:19, PREPAID:20, REL:21, NEEDLE:22, PIGMENT:23, TONE:24,
-  GRADE:25, TAG:26, POINT:27
+  GRADE:25, TAG:26, POINT:27, LANG:28, CWAY:29, CID:30
 };
 var C_HEAD = ['고객ID','이름','연락처','안심번호(050)','주이용샵','최초방문일','최근방문일',
   '총방문횟수','회차상품명','총회차','사용회차','잔여회차','고객메모(특이사항)',
   '등록경로','사진폴더','다음예약일',
   '성별','생년월일','담당자','잔여 선불액','연결 고객','니들','색소','퍼스널컬러 톤',
-  '등급','태그','잔여 포인트'];
+  '등급','태그','잔여 포인트','응대 언어','연락 방법','연락 아이디'];
 
 /* 발송로그 열 */
 var L_HEAD = ['발송시각','예약번호','샵','고객명','연락처','유형','채널','결과','메시지','응답'];
@@ -2839,7 +2839,10 @@ function custToObj(v) {
     tone:    String(v[C.TONE - 1] || ''),
     grade:   String(v[C.GRADE - 1] || ''),
     tag:     String(v[C.TAG - 1] || ''),
-    point:   Number(v[C.POINT - 1] || 0)
+    point:   Number(v[C.POINT - 1] || 0),
+    lang:    String(v[C.LANG - 1] || ''),
+    cway:    String(v[C.CWAY - 1] || ''),
+    cid:     String(v[C.CID - 1] || '')
   };
 }
 
@@ -3263,7 +3266,8 @@ function api_searchCustomers(term, filter) {
       if (f === '생일') return c.birth && String(c.birth).slice(5) === mmdd;
       if (f === '이번달생일') return c.birth && String(c.birth).slice(5, 7) === today.slice(5, 7);
       if (f === '선불보유') return Number(c.prepaid || 0) > 0;
-      if (f === '번호없음') return !c.phone && !c.safe;
+      if (f === '번호없음') return !c.phone && !c.safe && !c.cid;
+      if (f === '외국인') return !!c.lang && c.lang !== '한국어';
       if (f === '휴면') {
         if (c.grade === '휴면') return true;
         if (!c.last) return false;
@@ -3286,6 +3290,7 @@ function api_searchCustomers(term, filter) {
            last4(c.phone) === term || last4(c.safe) === term ||
            onlyDigits(c.phone).indexOf(onlyDigits(term)) >= 0 && onlyDigits(term).length >= 3 ||
            String(c.tag || '').toLowerCase().indexOf(lt) >= 0 ||
+           (c.cid && String(c.cid).toLowerCase().replace(/^@/, '').indexOf(lt.replace(/^@/, '')) >= 0) ||
            c.id === term;
   });
   return { ok: true, list: hit.slice(0, 60), total: hit.length,
@@ -3405,6 +3410,9 @@ function api_saveCustomer(p) {
         if (p.tone !== undefined)    sh.getRange(r, C.TONE).setValue(p.tone);
         if (p.grade !== undefined)   sh.getRange(r, C.GRADE).setValue(p.grade);
         if (p.tag !== undefined)     sh.getRange(r, C.TAG).setValue(p.tag);
+        if (p.lang !== undefined)    sh.getRange(r, C.LANG).setValue(p.lang);
+        if (p.cway !== undefined)    sh.getRange(r, C.CWAY).setValue(p.cway);
+        if (p.cid !== undefined)     sh.getRange(r, C.CID).setValue(String(p.cid).trim());
         sh.getRange(r, C.LEFT).setFormula('=IF($J' + r + '="","",$J' + r + '-$K' + r + ')');
         SpreadsheetApp.flush();
         return { ok: true, customer: custToObj(sh.getRange(r, 1, 1, C_HEAD.length).getValues()[0]) };
