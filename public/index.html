@@ -1248,6 +1248,7 @@ function custSearch(){
       r.list.forEach(function(c){
         var t = gradeTag(c.grade);
         t += langTag(c);
+        if(c.caution) t += ' <span class="tag bad">주의</span>';
         if(!c.phone && !c.safe && !c.cid) t += ' <span class="tag warn">번호없음</span>';
         else if(c.total!==null && c.left!==null && c.left<=1) t += ' <span class="tag bad">잔여 '+c.left+'</span>';
         var sub = (c.phone || c.safe || (c.cid ? (c.cway ? c.cway + ' ' : '') + c.cid : '연락처 미입력')) + ' · ' + c.visits + '회';
@@ -1371,6 +1372,10 @@ function drawCustomer(){
   var h =
     '<h2>' + esc(c.name) + langTag(c) + (c.name.indexOf('*')>=0 ? ' <span class="tag warn">실명 미입력</span>' : '') + '</h2>' +
     '<p class="sub">' + esc(shopShort(c.shop||'')) + ' · 총 ' + c.visits + '회 방문' + (c.last?' · 최근 '+c.last:'') + '</p>' +
+    (c.caution ? '<div class="card" style="border:1.5px solid #d9534f;background:#fff5f5;margin:0 0 10px">' +
+      '<div class="card-b"><div style="font-weight:800;color:#c0392b;margin-bottom:4px">⚠ 주의사항</div>' +
+      '<div style="font-size:.88rem;line-height:1.5">' + esc(c.caution).replace(/ · /g,'<br>') + '</div></div></div>' : '') +
+    (c.route ? '<p class="sub" style="margin-top:-4px">방문경로 · ' + esc(c.route) + '</p>' : '') +
 
     '<div class="tiles">' +
       '<div class="tile"><div class="lb">실 매출액</div><div class="vl" style="font-size:1rem">' +
@@ -1412,6 +1417,8 @@ function drawCustomer(){
       '<div class="field"><label>등급</label><select id="k-grade">' +
         selOpts(['VIP','단골','신규','재방문','휴면','블랙리스트'], c.grade, '없음') + '</select></div>' +
     '</div>' +
+    '<div class="field"><label>주의사항 (상담지에서 자동으로 채워져요 · 고쳐도 돼요)</label>' +
+      '<textarea id="k-caution" rows="2">' + esc(c.caution||'') + '</textarea></div>' +
     '<div class="field"><label>태그 (쉼표로 구분)</label>' +
       '<input id="k-tag" value="' + esc(c.tag||'') + '" placeholder="예) 퍼스널브로우, 소개고객"></div>' +
     '<p style="font-size:.8rem;color:var(--muted);padding:0 4px;margin:0 0 6px">' +
@@ -1886,7 +1893,7 @@ function saveCustomer(id){
             product:$('k-product').value, total:$('k-total').value, memo:$('k-memo').value,
             gender:vOf('k-gender'), birth:vOf('k-birth'), staff:vOf('k-staff'),
             rel:vOf('k-rel'), grade:vOf('k-grade'), tag:vOf('k-tag'),
-            lang:vOf('k-lang'), cway:vOf('k-cway'), cid:vOf('k-cid'),
+            lang:vOf('k-lang'), cway:vOf('k-cway'), cid:vOf('k-cid'), caution:vOf('k-caution'),
             needle:vOf('k-needle'), pigment:vOf('k-pigment'), tone:vOf('k-tone') };
   Object.keys(p).forEach(function(k){ if(p[k]===undefined) delete p[k]; });
   toast('저장 중…');

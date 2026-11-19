@@ -88,13 +88,13 @@ var C = {
   ID:1, NAME:2, PHONE:3, SAFE:4, SHOP:5, FIRST:6, LAST:7, VISITS:8,
   PRODUCT:9, TOTAL:10, USED:11, LEFT:12, MEMO:13, SOURCE:14, FOLDER:15, NEXT:16,
   GENDER:17, BIRTH:18, STAFF:19, PREPAID:20, REL:21, NEEDLE:22, PIGMENT:23, TONE:24,
-  GRADE:25, TAG:26, POINT:27, LANG:28, CWAY:29, CID:30
+  GRADE:25, TAG:26, POINT:27, LANG:28, CWAY:29, CID:30, CAUTION:31, ROUTE:32
 };
 var C_HEAD = ['고객ID','이름','연락처','안심번호(050)','주이용샵','최초방문일','최근방문일',
   '총방문횟수','회차상품명','총회차','사용회차','잔여회차','고객메모(특이사항)',
   '등록경로','사진폴더','다음예약일',
   '성별','생년월일','담당자','잔여 선불액','연결 고객','니들','색소','퍼스널컬러 톤',
-  '등급','태그','잔여 포인트','응대 언어','연락 방법','연락 아이디'];
+  '등급','태그','잔여 포인트','응대 언어','연락 방법','연락 아이디','주의사항(상담지)','방문경로(상담지)'];
 
 /* 발송로그 열 */
 var L_HEAD = ['발송시각','예약번호','샵','고객명','연락처','유형','채널','결과','메시지','응답'];
@@ -2842,7 +2842,9 @@ function custToObj(v) {
     point:   Number(v[C.POINT - 1] || 0),
     lang:    String(v[C.LANG - 1] || ''),
     cway:    String(v[C.CWAY - 1] || ''),
-    cid:     String(v[C.CID - 1] || '')
+    cid:     String(v[C.CID - 1] || ''),
+    caution: String(v[C.CAUTION - 1] || ''),
+    route:   String(v[C.ROUTE - 1] || '')
   };
 }
 
@@ -3413,6 +3415,7 @@ function api_saveCustomer(p) {
         if (p.lang !== undefined)    sh.getRange(r, C.LANG).setValue(p.lang);
         if (p.cway !== undefined)    sh.getRange(r, C.CWAY).setValue(p.cway);
         if (p.cid !== undefined)     sh.getRange(r, C.CID).setValue(String(p.cid).trim());
+        if (p.caution !== undefined) sh.getRange(r, C.CAUTION).setValue(p.caution);
         sh.getRange(r, C.LEFT).setFormula('=IF($J' + r + '="","",$J' + r + '-$K' + r + ')');
         SpreadsheetApp.flush();
         return { ok: true, customer: custToObj(sh.getRange(r, 1, 1, C_HEAD.length).getValues()[0]) };

@@ -471,7 +471,76 @@ function publicSubmit(token, body, meta) {
     }).join('\n');
     buildConsentSheet().appendRow([stamp, v[4], v[5], v[7], v[8] + ' (전자서명)', lines, 'esign:' + token]);
   } catch (e) {}
+  try { fillChartFromForm_(String(v[4] || ''), clean, qs, ans, meta && meta.lang, stamp); } catch (e) { logError('상담지→고객차트', e); }
   return { ok: true };
+}
+
+/* ---------- 상담지·동의서 → 고객 차트 ----------
+   인적사항(성함·연락처·생년월일·성별·언어)은 차트가 비어 있을 때만 채우고,
+   방문경로와 주의사항(건강 질문에 '예'라고 한 것만)은 가장 최근 서식 기준으로 바꿔 넣어요. */
+var CAUTION_LABEL = {
+  '과거에': '이전 문신 이력', '이전 시술 뒤': '이전 시술 후 이상', '문신 색소에 알레르기': '색소 알레르기',
+  '민감하거나': '민감한 피부', '시술 부위에 상처': '시술 부위 피부 이상', '최근 3개월 안에 피부과': '최근 피부과 치료',
+  '흉터가 붉게': '켈로이드·잘 붓는 피부', '알레르기가 있는 물질': '알레르기', 'B형·C형 간염': '혈액 감염병',
+  '실신한 적이': '실신·뇌신경계 질환', '지금 복용 중인 약': '복용 약', '오늘 아픈 곳': '오늘 컨디션 안 좋음',
+  '최근 24시간 안에 술': '24시간 내 음주', '임신 중이거나': '임신·수유 중', '입술 헤르페스': '입술 헤르페스',
+  '모발 이식': '모발 이식', '두피염': '두피염·두피 질환'
+};
+function fillChartFromForm_(cid, clean, qs, ans, lang, stamp) {
+  if (!cid) return;
+  var sh = sheetOf(SH.CUST), rows = readCustomers(), r = -1;
+  for (var i = 0; i < rows.length; i++) if (String(rows[i][C.ID - 1]).trim() === cid) { r = i; break; }
+  if (r < 0) return;
+  var row = rows[r], R = r + 2;
+  function shown(i) { return i < qs.length && shownQ_(qs, ans, i); }
+  function val(x) { return Array.isArray(x) ? x.join(', ') : (x === true || x === false ? '' : String(x || '').trim()); }
+  function byQ(q) { for (var i = 0; i < clean.length; i++) if (clean[i].q === q && shown(i)) return val(clean[i].v); return ''; }
+  function empty(col) { return String(row[col - 1] || '').trim() === ''; }
+
+  /* 인적사항: 비어 있는 칸만 */
+  var name = byQ('성함'), cur = String(row[C.NAME - 1] || '');
+  if (name && (cur.indexOf('*') >= 0 || cur === '고객' || !cur)) { try { renameEverywhere(cid, '', name); } catch (e) {} }
+  var ph = normPhone(byQ('연락처'));
+  if (ph && empty(C.PHONE) && empty(C.SAFE)) sh.getRange(R, isSafePhone(ph) ? C.SAFE : C.PHONE).setValue(ph);
+  var bd = byQ('생년월일');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(bd) && empty(C.BIRTH)) sh.getRange(R, C.BIRTH).setValue(toDate(bd));
+  var gd = byQ('성별');
+  if ((gd === '여' || gd === '남') && empty(C.GENDER)) sh.getRange(R, C.GENDER).setValue(gd);
+  var LN = { en: '영어', ja: '일본어', zh: '중국어', ko: '한국어' }[lang || 'ko'];
+  if (LN && empty(C.LANG)) sh.getRange(R, C.LANG).setValue(LN);
+
+  /* 방문경로: 경로 + 키워드/소개자 */
+  var route = byQ('방문경로');
+  if (route) {
+    var kw = byQ('어떤 키워드로 검색해서 오셨어요?'), ref = byQ('소개해 주신 분 성함'), etc = byQ('어떤 경로로 오셨는지 알려 주세요');
+    var extra = kw || ref || etc;
+    sh.getRange(R, C.ROUTE).setValue(route + (extra ? ' (' + extra + ')' : ''));
+  }
+
+  /* 주의사항: 건강 확인 구간에서 '예'·질병 선택·특이사항만 */
+  var start = -1, notes = [];
+  for (var k = 0; k < clean.length; k++) {
+    var q = clean[k].q;
+    if (q === '건강 상태 확인') { start = k; continue; }
+    if (start < 0 || !shown(k)) continue;
+    if (q === '그 밖에 원장님께 알려 주실 내용') { var t = val(clean[k].v); if (t) notes.push('특이사항: ' + t); break; }
+    var a = clean[k].v;
+    if (q.indexOf('진단받았거나 지금 치료 중인 질병') === 0) {
+      var L = (Array.isArray(a) ? a : [a]).filter(function (x) { return x && x !== '해당 없음' && x !== '기타'; });
+      var other = byQ('어떤 질병인지 알려 주세요');
+      if (other) L.push(other);
+      if (L.length) notes.push('질병: ' + L.join(', '));
+      continue;
+    }
+    if (a !== '예' || qs[k].type !== '단일선택') continue;
+    var label = q;
+    Object.keys(CAUTION_LABEL).some(function (key) { if (q.indexOf(key) === 0) { label = CAUTION_LABEL[key]; return true; } return false; });
+    /* 바로 다음 칸이 이 질문의 '자세히' 칸이면 같이 붙여요 */
+    var nx = qs[k + 1], det = (nx && nx.cond === q + '=예' && shown(k + 1)) ? val(clean[k + 1].v) : '';
+    notes.push(label + (det ? ': ' + det : ''));
+  }
+  if (start >= 0) sh.getRange(R, C.CAUTION).setValue(notes.length ? '[' + String(stamp).slice(0, 10) + ' 상담지] ' + notes.join(' · ') : '');
+  SpreadsheetApp.flush();
 }
 
 /* ---------- 닥터뷰티랩 눈썹·입술·두피 상담·동의서 + 공통 보호자 동의 (대표만 실행) ----------
