@@ -1,5 +1,15 @@
 /* 손님 서식 영어·일본어·중국어(간체) 번역 (키 = 한국어 원문 그대로). 한국어 문구를 고치면 여기 키도 같이 고쳐야 번역이 나와요. */
 export const I18N = {
+ "건강 상태 답변 확인": {
+  "en": "Health information confirmation",
+  "ja": "健康状態の回答の確認",
+  "zh": "健康状况回答确认"
+ },
+ "위 건강 상태 질문에 사실대로 답했음을 확인합니다. 사실과 다르게 적거나 알리지 않아 생긴 문제는 본인에게 책임이 있음을 이해합니다.": {
+  "en": "I confirm that I have answered the health questions above truthfully. I understand that I am responsible for any problems caused by incorrect or withheld information.",
+  "ja": "上記の健康状態に関する質問に事実どおり回答したことを確認します。事実と異なる記入や未申告によって生じた問題は、本人の責任であることを理解しています。",
+  "zh": "本人确认已如实回答以上健康状况问题。本人理解，因填写不实或未告知而产生的问题由本人负责。"
+ },
  "눈썹 시술 전 상담지·동의서예요.\n작성해 주신 내용은 안전한 시술을 위한 기록으로, 관련 법령에 따라 5년간 보관돼요.": {
   "en": "This is the consultation and consent form for your eyebrow procedure.\nThe information you provide is a record for a safe procedure and is kept for 5 years in accordance with applicable laws.",
   "ja": "眉の施術前カウンセリングシート・同意書です。\nご記入いただいた内容は安全な施術のための記録として、関係法令に基づき5年間保管いたします。",

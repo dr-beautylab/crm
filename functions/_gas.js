@@ -5431,6 +5431,9 @@ function api_esignView(token) {
   for (var i = 0; i < v.length; i++) if (String(v[i][1]) === String(token)) {
     var r = v[i], answers = [];
     try { answers = JSON.parse(String(r[7] || '[]')); } catch (e) {}
+    if (!CUR || CUR.role !== 'owner') answers = answers.map(function (a) {
+      return ownerOnlyQ_(a.q) ? { q: '(대표만 볼 수 있는 항목)', v: '—', type: a.type } : a;
+    });
     return { ok: true, at: String(r[0]), name: String(r[3]), resno: String(r[4]), shop: String(r[5]), form: String(r[6]),
              answers: answers, sign: String(r[8]), device: String(r[9]) };
   }
@@ -5691,6 +5694,10 @@ function publicSubmit(token, body, meta) {
 /* ---------- 상담지·동의서 → 고객 차트 ----------
    인적사항(성함·연락처·생년월일·성별·언어)은 차트가 비어 있을 때만 채우고,
    방문경로와 주의사항(건강 질문에 '예'라고 한 것만)은 가장 최근 서식 기준으로 바꿔 넣어요. */
+var HEALTH_CONFIRM_Q = '건강 상태 답변 확인';
+var HEALTH_CONFIRM_A = '위 건강 상태 질문에 사실대로 답했음을 확인합니다. 사실과 다르게 적거나 알리지 않아 생긴 문제는 본인에게 책임이 있음을 이해합니다.';
+/* 감염병 문항은 대표만 봅니다 (직원 화면·고객 차트에는 내용 대신 '대표 확인 필요'만) */
+function ownerOnlyQ_(q) { return String(q || '').indexOf('감염병') >= 0; }
 var CAUTION_LABEL = {
   '과거에': '이전 문신 이력', '이전 시술 뒤': '이전 시술 후 이상', '문신 색소에 알레르기': '색소 알레르기',
   '민감하거나': '민감한 피부', '시술 부위에 상처': '시술 부위 피부 이상', '최근 3개월 안에 피부과': '최근 피부과 치료',
@@ -5749,6 +5756,7 @@ function fillChartFromForm_(cid, clean, qs, ans, lang, stamp) {
       continue;
     }
     if (a !== '예' || clean[k].type !== '단일선택') continue;
+    if (ownerOnlyQ_(q)) { notes.push('대표 확인 필요 항목 있음'); continue; }
     var label = q;
     Object.keys(CAUTION_LABEL).some(function (key) { if (q.indexOf(key) === 0) { label = CAUTION_LABEL[key]; return true; } return false; });
     /* 바로 다음 칸이 이 질문의 '자세히' 칸이면 같이 붙여요 */
@@ -5824,15 +5832,14 @@ function pmuForms_(shop) {
     L.push(Q(form, '진단받았거나 지금 치료 중인 질병이 있나요?', '복수선택',
       ['뇌졸중(중풍)', '심근경색·협심증', '고혈압', '당뇨병', '고지혈증', '폐결핵', '기타', '해당 없음'], 1));
     L.push(Q(form, '어떤 질병인지 알려 주세요', '단답', [], 1, '진단받았거나 지금 치료 중인 질병이 있나요?=기타'));
-    L = L.concat(yn(form, 'B형·C형 간염, 후천성면역결핍증(AIDS) 등 혈액으로 옮을 수 있는 감염병으로 진단받았거나 치료 중이신가요?', '',
-      '해당되면 병원 소견서를 확인한 뒤 시술 여부를 정해요.'));
-    L = L.concat(yn(form, '실신한 적이 있거나 뇌전증 등 뇌신경계 질환이 있나요?', '', '해당되면 병원 소견서를 확인한 뒤 시술 여부를 정해요.'));
-    L = L.concat(yn(form, '지금 복용 중인 약이 있나요? (항응고제·아스피린·면역억제제·탈모약 등)', '약 이름을 알려 주세요',
-      '항응고제·아스피린처럼 출혈 위험이 있는 약은 병원 소견서를 확인한 뒤 시술 여부를 정해요.'));
+    L = L.concat(yn(form, 'B형·C형 간염, 후천성면역결핍증(AIDS) 등 혈액으로 옮을 수 있는 감염병으로 진단받았거나 치료 중이신가요?', ''));
+    L = L.concat(yn(form, '실신한 적이 있거나 뇌전증 등 뇌신경계 질환이 있나요?', ''));
+    L = L.concat(yn(form, '지금 복용 중인 약이 있나요? (항응고제·아스피린·면역억제제·탈모약 등)', '약 이름을 알려 주세요'));
     L = L.concat(yn(form, '오늘 아픈 곳이 있거나 열, 오한, 심한 피로감이 있나요?'));
     L = L.concat(yn(form, '최근 24시간 안에 술을 드셨나요?'));
     L = L.concat(yn(form, '임신 중이거나 수유 중이신가요?'));
     L.push(Q(form, '그 밖에 원장님께 알려 주실 내용', '서술', [], 0));
+    L.push(Q(form, HEALTH_CONFIRM_Q, '동의', [HEALTH_CONFIRM_A], 1));
     return L;
   }
   function tail(form, care, gift) {
@@ -6391,8 +6398,30 @@ function sendPendingConfirms() {
   } catch (e) { logError('밤 예약 확정 문자', e); return { sent: 0 }; }
 }
 
+/* 이미 저장된 눈썹·입술·두피 양식에 2026-11-20 변경을 한 번에 반영 (대표만, 여러 번 눌러도 같은 결과)
+   - 소견서 안내 문구 빼기 (예를 골라도 화면에 따로 뜨는 말 없음)
+   - 건강 문항 끝에 '건강 상태 답변 확인' 필수 동의 넣기 */
+function api_patchHealthForms() {
+  try {
+    if (CUR.role !== 'owner') return { ok: false, msg: '대표만 쓸 수 있습니다.' };
+    var list = readForms(), out = [], help = 0, added = 0;
+    for (var i = 0; i < list.length; i++) {
+      var f = list[i];
+      if (/상담·동의서$/.test(f.form) && /소견서/.test(f.help || '')) { f.help = ''; help++; }
+      if (f.form && /상담·동의서$/.test(f.form) && f.q === HEALTH_CONFIRM_Q) continue;   /* 다시 넣으므로 기존 것 빼기 */
+      out.push(f);
+      if (/상담·동의서$/.test(f.form) && f.q === '그 밖에 원장님께 알려 주실 내용') {
+        out.push({ shop: f.shop, form: f.form, q: HEALTH_CONFIRM_Q, type: '동의', opts: [HEALTH_CONFIRM_A], need: true, cond: '', help: '' });
+        added++;
+      }
+    }
+    writeForms_(out);
+    return { ok: true, helpRemoved: help, confirmAdded: added, total: out.length };
+  } catch (e) { logError('건강 문항 반영', e); return { ok: false, msg: e.message }; }
+}
 
-  const __API = { api_login: api_login, api_savePins: api_savePins, api_setPassword: api_setPassword, api_bootstrap: api_bootstrap, api_home: api_home, api_day: api_day, api_range: api_range, api_month: api_month, api_updateBooking: api_updateBooking, api_addBooking: api_addBooking, api_searchCustomers: api_searchCustomers, api_customer: api_customer, api_saveCustomer: api_saveCustomer, api_addCustomer: api_addCustomer, api_deleteCustomer: api_deleteCustomer, api_customerFolder: api_customerFolder, api_sales: api_sales, api_menu: api_menu, api_saveMenu: api_saveMenu, api_payment: api_payment, api_savePayment: api_savePayment, api_savePp: api_savePp, api_ppLog: api_ppLog, api_staffReport: api_staffReport, api_usage: api_usage, api_blocks: api_blocks, api_saveBlock: api_saveBlock, api_deleteBlock: api_deleteBlock, api_trash: api_trash, api_restoreTrash: api_restoreTrash, api_cash: api_cash, api_saveCash: api_saveCash, api_deleteCash: api_deleteCash, api_forms: api_forms, api_saveForms: api_saveForms, api_saveConsent: api_saveConsent, api_consents: api_consents, api_uploadPhoto: api_uploadPhoto, api_sendLog: api_sendLog, api_salesReport: api_salesReport, api_checkMail: api_checkMail, api_send: api_send, api_completePast: api_completePast, api_needAttention: api_needAttention, api_rescanRequests: api_rescanRequests, api_consentLink: api_consentLink, api_esignList: api_esignList, api_esignView: api_esignView, api_photos: api_photos, api_deletePhoto: api_deletePhoto, api_sourceStats: api_sourceStats, api_importTvSales: api_importTvSales, api_backfillCharts: api_backfillCharts, api_seedPmuForms: api_seedPmuForms, api_ackBlock: api_ackBlock, api_ackAllBlocks: api_ackAllBlocks, api_renameBooking: api_renameBooking, api_renameCustomer: api_renameCustomer, api_smsCfg: api_smsCfg, api_saveSmsCfg: api_saveSmsCfg, api_testSms: api_testSms, api_custExtra: api_custExtra };
+
+  const __API = { api_login: api_login, api_savePins: api_savePins, api_setPassword: api_setPassword, api_bootstrap: api_bootstrap, api_home: api_home, api_day: api_day, api_range: api_range, api_month: api_month, api_updateBooking: api_updateBooking, api_addBooking: api_addBooking, api_searchCustomers: api_searchCustomers, api_customer: api_customer, api_saveCustomer: api_saveCustomer, api_addCustomer: api_addCustomer, api_deleteCustomer: api_deleteCustomer, api_customerFolder: api_customerFolder, api_sales: api_sales, api_menu: api_menu, api_saveMenu: api_saveMenu, api_payment: api_payment, api_savePayment: api_savePayment, api_savePp: api_savePp, api_ppLog: api_ppLog, api_staffReport: api_staffReport, api_usage: api_usage, api_blocks: api_blocks, api_saveBlock: api_saveBlock, api_deleteBlock: api_deleteBlock, api_trash: api_trash, api_restoreTrash: api_restoreTrash, api_cash: api_cash, api_saveCash: api_saveCash, api_deleteCash: api_deleteCash, api_forms: api_forms, api_saveForms: api_saveForms, api_saveConsent: api_saveConsent, api_consents: api_consents, api_uploadPhoto: api_uploadPhoto, api_sendLog: api_sendLog, api_salesReport: api_salesReport, api_checkMail: api_checkMail, api_send: api_send, api_completePast: api_completePast, api_needAttention: api_needAttention, api_rescanRequests: api_rescanRequests, api_consentLink: api_consentLink, api_esignList: api_esignList, api_esignView: api_esignView, api_photos: api_photos, api_deletePhoto: api_deletePhoto, api_sourceStats: api_sourceStats, api_importTvSales: api_importTvSales, api_backfillCharts: api_backfillCharts, api_seedPmuForms: api_seedPmuForms, api_ackBlock: api_ackBlock, api_ackAllBlocks: api_ackAllBlocks, api_renameBooking: api_renameBooking, api_renameCustomer: api_renameCustomer, api_smsCfg: api_smsCfg, api_saveSmsCfg: api_saveSmsCfg, api_testSms: api_testSms, api_custExtra: api_custExtra, api_patchHealthForms: api_patchHealthForms };
   return { __API, api, processBookingMails, autoSettle, sendReminderAdvance, sendReminderTomorrow,
            sendReminderToday, sendRetouchYear, sendPendingConfirms, dailyMaintenance, setup, publicForm, publicSubmit, authOf, addPhotoRow, expiredPhotos, CUR: () => CUR };
 }
