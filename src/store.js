@@ -42,14 +42,17 @@ export async function run(env, fn, extra = {}) {
   const gas = makeGas(book, io);
   const result = fn(gas);
   await saveBook(env.DB, book);
+  const calls = [];
   for (const f of io.fetches) {
     try {
       const o = f.opt || {};
       const body = o.payload && typeof o.payload === 'object' ? new URLSearchParams(o.payload) : o.payload;
-      await fetch(f.url, { method: (o.method || 'get').toUpperCase(), body });
-    } catch (e) { io.logs.push('외부호출 실패: ' + e.message); }
+      const res = await fetch(f.url, { method: (o.method || 'get').toUpperCase(), body });
+      const text = await res.text();
+      calls.push({ url: f.url, status: res.status, text: text.slice(0, 500) });
+    } catch (e) { io.logs.push('외부호출 실패: ' + e.message); calls.push({ url: f.url, status: 0, text: '통신오류: ' + e.message }); }
   }
-  return { result, logs: io.logs };
+  return { result, logs: io.logs, calls };
 }
 
 export const json = (o, status = 200) => new Response(JSON.stringify(o), {
