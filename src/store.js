@@ -47,16 +47,21 @@ export async function run(env, fn, extra = {}) {
     try {
       const o = f.opt || {};
       const body = o.payload && typeof o.payload === 'object' ? new URLSearchParams(o.payload) : o.payload;
-      const res = await fetch(f.url, { method: (o.method || 'get').toUpperCase(), body });
+      const headers = {};
+      if (o.contentType) headers['content-type'] = o.contentType;
+      if (o.solapi) headers['Authorization'] = await solapiAuth(o.solapi.key, o.solapi.secret);
+      const res = await fetch(f.url, { method: (o.method || 'get').toUpperCase(), body, headers });
       const text = await res.text();
       calls.push({ url: f.url, status: res.status, text: text.slice(0, 500) });
     } catch (e) { io.logs.push('외부호출 실패: ' + e.message); calls.push({ url: f.url, status: 0, text: '통신오류: ' + e.message }); }
   }
   /* 알리고가 거절한 문자는 발송로그의 '성공'을 '실패'로 바로잡습니다 */
-  const bad = calls.filter(c => /aligo/.test(c.url) && /send/.test(c.url)).map((c, i) => ({ c, f: io.fetches.filter(f => /aligo/.test(f.url) && /send/.test(f.url))[i] }))
-    .filter(x => { let j = {}; try { j = JSON.parse(x.c.text); } catch (e) {} return String(j.result_code) !== '1' && String(j.code) !== '0'; })
-    .map(x => { let j = {}; try { j = JSON.parse(x.c.text); } catch (e) {} const p = (x.f && x.f.opt && x.f.opt.payload) || {};
-                return { to: String(p.receiver || p.receiver_1 || ''), why: j.message || x.c.text || ('HTTP ' + x.c.status) }; });
+  const isSend = u => (/aligo/.test(u) && /send/.test(u)) || /solapi\.com\/messages/.test(u);
+  const sends = io.fetches.filter(f => isSend(f.url));
+  const bad = calls.filter(c => isSend(c.url)).map((c, i) => ({ c, f: sends[i] }))
+    .filter(x => !smsOk(x.c))
+    .map(x => { const o = (x.f && x.f.opt) || {}; const p = (o.payload && typeof o.payload === 'object') ? o.payload : {};
+                return { to: String(o.receiver || p.receiver || p.receiver_1 || ''), why: smsWhy(x.c) }; });
   if (bad.length) {
     try {
       const book2 = await loadBook(env.DB);
@@ -76,4 +81,24 @@ export const json = (o, status = 200) => new Response(JSON.stringify(o), {
 export function keyOK(request, env) {
   const k = request.headers.get('x-crm-key') || '';
   return !!env.CRM_KEY && k === env.CRM_KEY;
+}
+
+/* 문자 업체 응답 판단 */
+export function smsOk(c) {
+  let j = {}; try { j = JSON.parse(c.text); } catch (e) {}
+  if (/solapi/.test(c.url)) return c.status >= 200 && c.status < 300 && (!j.statusCode || String(j.statusCode) === '2000');
+  return String(j.result_code) === '1' || String(j.code) === '0';
+}
+export function smsWhy(c) {
+  let j = {}; try { j = JSON.parse(c.text); } catch (e) {}
+  return j.message || j.errorMessage || j.statusMessage || c.text || ('HTTP ' + c.status);
+}
+/* 솔라피 HMAC-SHA256 서명 */
+async function solapiAuth(key, secret) {
+  const date = new Date().toISOString();
+  const salt = crypto.randomUUID().replace(/-/g, '');
+  const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(date + salt));
+  const hex = [...new Uint8Array(sig)].map(b => b.toString(16).padStart(2, '0')).join('');
+  return `HMAC-SHA256 apiKey=${key}, date=${date}, salt=${salt}, signature=${hex}`;
 }

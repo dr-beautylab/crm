@@ -2741,7 +2741,14 @@ function openSmsCfg(){
   openSheet('<div class="spin"></div>');
   call('api_smsCfg').then(function(r){
     if(!r.ok){ closeSheet(); toast(r.msg); return; }
-    openSheet('<h2>문자 설정 (알리고)</h2>' +
+    openSheet('<h2>문자 설정</h2>' +
+      '<p class="sub" style="margin-top:-4px">지금 쓰는 업체: <b>' + esc(r.provider || '알리고') + '</b></p>' +
+      '<div class="sec-title">솔라피 (넣으면 솔라피로 보내요)</div>' +
+      '<div class="field"><label>솔라피 API Key' + (r.solKeyTail ? ' (저장됨 · 끝자리 ' + esc(r.solKeyTail) + ')' : '') + '</label>' +
+        '<input id="sc-skey" autocomplete="off" placeholder="' + (r.solKeyTail ? '바꿀 때만 새로 넣으세요' : '솔라피 콘솔 > API Key 관리') + '"></div>' +
+      '<div class="field"><label>솔라피 API Secret' + (r.solSecretSet ? ' (저장됨)' : '') + '</label>' +
+        '<input id="sc-ssec" autocomplete="off" placeholder="' + (r.solSecretSet ? '바꿀 때만 새로 넣으세요' : '발급할 때 한 번만 보여요') + '"></div>' +
+      '<div class="sec-title">알리고</div>' +
       '<p class="sub">' + (r.ready ? (r.test ? '✅ 입력 완료 · 🧪 지금은 테스트 모드라 실제로는 안 나가요' : '✅ 입력 완료 · 실제 발송 켜짐') : '⚙️ 아직 비어 있어요') + '</p>' +
       '<div class="field"><label>알리고 아이디</label><input id="sc-uid" autocomplete="off" value="' + esc(r.userId) + '"></div>' +
       '<div class="field"><label>API키' + (r.keyTail ? ' (저장됨 · 끝자리 ' + esc(r.keyTail) + ')' : '') + '</label>' +
@@ -2764,6 +2771,7 @@ function openSmsCfg(){
 function saveSmsCfg(btn){
   busy(btn,'저장 중…');
   call('api_saveSmsCfg',[{ userId:$('sc-uid').value, key:$('sc-key').value, sender:$('sc-snd').value, test:$('sc-test').checked,
+    solKey:$('sc-skey').value, solSecret:$('sc-ssec').value,
     auto:{ confirm:$('sc-a-confirm').checked, tomorrow:$('sc-a-tomorrow').checked, retouchYear:$('sc-a-ry').checked } }]).then(function(r){
     done(btn);
     if(!r.ok){ toast(r.msg||'저장하지 못했어요'); return; }

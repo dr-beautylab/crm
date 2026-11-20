@@ -905,8 +905,10 @@ function api_renameCustomer(id, name) {
    키는 화면에 다시 보여주지 않고 뒷 4자리만 보여줍니다. 빈칸으로 저장하면 기존 값을 그대로 둡니다. */
 function smsCfgView_() {
   var key = cfgStr('알리고 API키', '');
+  var sk = cfgStr('솔라피 API키', '');
   return { ok: true, userId: cfgStr('알리고 사용자ID', ''), sender: cfgStr('발신번호', ''),
            keyTail: key ? key.slice(-4) : '', test: cfgOn('테스트 모드'), ready: aligoReady(),
+           provider: solapiReady_() ? '솔라피' : '알리고', solKeyTail: sk ? sk.slice(-4) : '', solSecretSet: !!cfgStr('솔라피 시크릿', ''),
            auto: { advance: cfgOn('사전 알림 사용'), advDays: advanceDays(), advTime: cfgStr('사전 알림 시각', '14:00'),
                    confirm: cfgOn('확정 즉시 안내 사용'), tomorrow: cfgOn('전일 알림 사용'), today: cfgOn('당일 알림 사용'),
                    retouchYear: cfgOn('1년 리터치 안내 사용') } };
@@ -923,6 +925,8 @@ function api_saveSmsCfg(p) {
     if (p.key !== undefined && String(p.key).trim()) setCfg('알리고 API키', String(p.key).trim());
     if (p.sender !== undefined && String(p.sender).trim()) setCfg('발신번호', String(p.sender).trim());
     if (p.test !== undefined) setCfg('테스트 모드', p.test ? '사용' : '미사용');
+    if (p.solKey !== undefined && String(p.solKey).trim()) setCfg('솔라피 API키', String(p.solKey).trim());
+    if (p.solSecret !== undefined && String(p.solSecret).trim()) setCfg('솔라피 시크릿', String(p.solSecret).trim());
     if (p.auto) {
       var A = { advance: '사전 알림 사용', tomorrow: '전일 알림 사용', today: '당일 알림 사용', confirm: '확정 즉시 안내 사용', retouchYear: '1년 리터치 안내 사용' };
       Object.keys(A).forEach(function (k) { if (p.auto[k] !== undefined) setCfg(A[k], p.auto[k] ? '사용' : '미사용'); });
@@ -935,7 +939,7 @@ function api_saveSmsCfg(p) {
 function api_testSms(to) {
   try {
     if (CUR.role !== 'owner') return { ok: false, msg: '대표만 쓸 수 있어요.' };
-    if (!aligoReady()) return { ok: false, msg: '사용자ID · API키 · 발신번호를 먼저 저장해 주세요.' };
+    if (!aligoReady()) return { ok: false, msg: '문자 업체 키와 발신번호를 먼저 저장해 주세요.' };
     var d = onlyDigits(to);
     if (d.length < 10) return { ok: false, msg: '받을 번호를 확인해 주세요.' };
     var r = sendSms(d, '[뷰로그] 문자 연결 시험 발송입니다.');
@@ -1223,4 +1227,36 @@ function markSendFailures(list) {
     }
   });
   return n;
+}
+
+/* =========================================================
+ *  솔라피 문자 (2026-11-21)
+ *  알리고는 고정 IP만 허용해서 클라우드플레어에서 보낼 수 없습니다.
+ *  솔라피 API키·시크릿을 넣으면 솔라피로 보냅니다(서명은 store.js 가 보낼 때 붙임).
+ * ========================================================= */
+var SOLAPI_SEND = 'https://api.solapi.com/messages/v4/send';
+function solapiReady_() { return !!(cfgStr('솔라피 API키', '') && cfgStr('솔라피 시크릿', '') && cfgStr('발신번호', '')); }
+function aligoReady() {
+  if (solapiReady_()) return true;
+  return !!(cfgStr('알리고 사용자ID', '') && cfgStr('알리고 API키', '') && cfgStr('발신번호', ''));
+}
+function sendSms(to, msg) {
+  try {
+    if (solapiReady_()) {
+      var isLms = msg.length > 45;
+      var m = { to: onlyDigits(to), from: onlyDigits(cfgStr('발신번호', '')), text: msg, type: isLms ? 'LMS' : 'SMS' };
+      if (isLms) m.subject = '예약 안내';
+      UrlFetchApp.fetch(SOLAPI_SEND, { method: 'post', contentType: 'application/json',
+        solapi: { key: cfgStr('솔라피 API키', ''), secret: cfgStr('솔라피 시크릿', '') },
+        payload: JSON.stringify({ message: m }), receiver: m.to });
+      return { ok: true, raw: '솔라피로 보냄' };
+    }
+    var isLms2 = msg.length > 45;
+    var payload = { key: cfgStr('알리고 API키', ''), user_id: cfgStr('알리고 사용자ID', ''), sender: cfgStr('발신번호', ''),
+                    receiver: onlyDigits(to), msg: msg, msg_type: isLms2 ? 'LMS' : 'SMS' };
+    if (isLms2) payload.title = '예약 안내';
+    var r = UrlFetchApp.fetch(ALIGO_SMS, { method: 'post', payload: payload, muteHttpExceptions: true });
+    var text = r.getContentText(); var j = {}; try { j = JSON.parse(text); } catch (e) {}
+    return { ok: String(j.result_code) === '1', raw: text };
+  } catch (e) { return { ok: false, raw: '통신오류: ' + e.message }; }
 }
