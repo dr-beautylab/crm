@@ -2276,6 +2276,7 @@ function sendForRow(dataSh, r, type, force) {
   if (v[D.STATUS - 1] === STATUS.CANCEL) return { ok: false, reason: '취소된 예약' };
   var shop = shopByName(v[D.SHOP - 1]);
   if (shop && !cfgOn(shop.sendKey)) return { ok: false, reason: '이 샵은 발송 꺼짐' };
+  if (type !== '개별' && autoOffShop(v[D.SHOP - 1])) return { ok: false, reason: '이 샵 자동 안내는 팅커뷰에서 보냄' };
   var to = v[D.PHONE - 1] || v[D.SAFE - 1];
   if (!to) {
     logSend(v, type, '-', '실패', '', '연락처 없음');
@@ -3098,9 +3099,13 @@ function api_home() {
   // 이번달 매출
   var now = new Date();
   var ym = fmt(now, 'yyyy-MM');
-  var monthSales = {};
-  shops().forEach(function (s) { monthSales[s.name] = 0; });
+  var monthSales = {}, todaySales = {};
+  shops().forEach(function (s) { monthSales[s.name] = 0; todaySales[s.name] = 0; });
   readSlog().forEach(function (g) {
+    if (String(g.date).indexOf(t0) === 0) {
+      if (todaySales[g.shop] === undefined) todaySales[g.shop] = 0;
+      todaySales[g.shop] += g.amount;
+    }
     if (String(g.date).indexOf(ym) !== 0) return;
     if (monthSales[g.shop] === undefined) monthSales[g.shop] = 0;
     monthSales[g.shop] += g.amount;
@@ -3120,6 +3125,7 @@ function api_home() {
     needCheck: needCheck, noPhone: noPhone,
     lowRound: lowRound.slice(0, 20),
     monthSales: monthSales,
+    todaySales: todaySales,
     noPaid: noPaid,
     lastMail: cfgStr('마지막 메일확인 시각', '')
   };
@@ -3570,7 +3576,8 @@ function api_payment(resno) {
     var menu = readMenu().filter(function (m) { return !m.shop || m.shop === found.shop; });
     return { ok: true, booking: found, items: items, discount: discount, menu: menu, saved: has,
              pay: pay, staff: staff || found.staff || '', npay: npay, feeRate: npayRate(),
-             payList: ['신용카드', '체크카드', '현금', '계좌이체', '네이버페이', '신용카드+네이버페이', '체크카드+네이버페이', '기타'],
+             payList: ['신용카드', '체크카드', '해외카드', '현금', '계좌이체', '네이버페이', '신용카드+네이버페이', '체크카드+네이버페이', '해외카드+네이버페이', '기타'],
+             creditRate: creditRate(), debitRate: debitRate(), foreignRate: foreignRate(),
              staffList: cfgStr('담당자 명단', '').split(',').map(function (x) { return x.trim(); })
                           .filter(function (x) { return x; }) };
   } catch (e) { return { ok: false, msg: e.message }; }
@@ -3587,6 +3594,10 @@ function api_savePayment(p) {
       if (String(rows[i][D.RESNO - 1]).trim() === resno) { idx = i + 2; o = rowToObj(rows[i]); break; }
     }
     if (idx < 0) return { ok: false, msg: '예약을 찾지 못했습니다.' };
+    var preTotal = 0;
+    (p.items || []).forEach(function (it) { if (String(it.name || '').trim()) preTotal += Number(it.amount || 0); });
+    preTotal -= Number(p.discount || 0);
+    if (preTotal < 0) return { ok: false, msg: '할인이 시술 금액보다 커서 실결제금액이 0원보다 작아요. 금액을 다시 확인해 주세요.' };
 
     var sh = buildSlogSheet();
     var last = sh.getLastRow();
@@ -4460,9 +4471,12 @@ function npayRate() { return rateOf('네이버 수수료율(%)', '1.98'); }
 /* 카드 수수료율(%). 연매출 3억 이하 우대: 신용 0.40 / 체크 0.15 */
 function creditRate() { return rateOf('신용카드 수수료율(%)', '0.40'); }
 function debitRate()  { return rateOf('체크카드 수수료율(%)', '0.15'); }
+/* 해외 발급 카드는 우대요율 대상이 아니라 따로 받습니다 (하나카드 기준 3.6) */
+function foreignRate() { return rateOf('해외카드 수수료율(%)', '3.6'); }
 function cardRateOf(pay) {
   var p = String(pay || '');
   if (p.indexOf('카드') < 0) return 0;
+  if (p.indexOf('해외') >= 0) return foreignRate();
   return (p.indexOf('체크') >= 0) ? debitRate() : creditRate();
 }
 function npayFee(base) { return Math.round(Number(base || 0) * npayRate() / 100); }

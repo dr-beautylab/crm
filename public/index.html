@@ -503,6 +503,17 @@ function renderHome(){
     h += '<div class="sec-title">내일 예약</div>';
     h += listHtml(d.tomorrowList, '내일은 아직 예약이 없습니다');
 
+    if(d.todaySales){
+      h += '<div class="sec-title">오늘 매출</div><div class="card"><div class="card-b">';
+      var ttot = 0;
+      sn.forEach(function(k){ ttot += Number(d.todaySales[k]||0); });
+      sn.forEach(function(k){
+        h += '<div class="kv"><span>' + esc(k) + '</span><b>' + won(d.todaySales[k]||0) + '원</b></div>';
+      });
+      h += '<div class="kv" style="border-top:2px solid var(--line);margin-top:4px;padding-top:9px">' +
+           '<span style="font-weight:700">오늘 총매출</span><b style="color:var(--plum);font-weight:700">' + won(ttot) + '원</b></div>';
+      h += '</div></div>';
+    }
     h += '<div class="sec-title">이번 달 매출</div><div class="card"><div class="card-b">';
     var tot = 0;
     sn.forEach(function(k){ tot += d.monthSales[k]; });
@@ -898,7 +909,7 @@ function saveBooking(resno){
   }).catch(fail);
 }
 /* ── 결제(매출) 등록 ── */
-var PAY = { resno:'', menu:[], items:[], discount:0, b:null, pay:'', staff:'', npay:0, feeRate:0, creditRate:0, debitRate:0, payList:[], staffList:[] };
+var PAY = { resno:'', menu:[], items:[], discount:0, b:null, pay:'', staff:'', npay:0, feeRate:0, creditRate:0, debitRate:0, foreignRate:0, payList:[], staffList:[] };
 function openPay(resno){
   toast('불러오는 중…');
   call('api_payment',[resno]).then(function(r){
@@ -909,7 +920,7 @@ function openPay(resno){
     PAY.discount = Number(r.discount||0);
     PAY.pay = r.pay||''; PAY.staff = r.staff||'';
     PAY.npay = Number(r.npay||0); PAY.feeRate = Number(r.feeRate||0);
-    PAY.creditRate = Number(r.creditRate||0); PAY.debitRate = Number(r.debitRate||0);
+    PAY.creditRate = Number(r.creditRate||0); PAY.debitRate = Number(r.debitRate||0); PAY.foreignRate = Number(r.foreignRate||0);
     PAY.payList = r.payList||[]; PAY.staffList = r.staffList||[];
     drawPay();
   }).catch(fail);
@@ -961,7 +972,7 @@ function payPick(i, name){
   if(m) PAY.items[i].amount = m.price;
   drawPay();
 }
-function paySum(){ var el = $('pay-sum'); if(el) el.textContent = won(payTotal()) + '원'; payFee(); }
+function paySum(){ var el = $('pay-sum'); if(el){ el.textContent = won(payTotal()) + '원'; el.style.color = payTotal() < 0 ? 'var(--bad)' : 'var(--plum)'; } payFee(); }
 
 /* 네이버 결제액: 카드와 섞어 받은 경우에만 따로 물어봅니다 */
 function payMixed(){ var p = String(PAY.pay||''); return p.indexOf('네이버') >= 0 && p.indexOf('카드') >= 0; }
@@ -977,7 +988,7 @@ function payFeeText(){
   var b = Number(PAY.npay||0);
   if(!b) return '카드와 네이버페이를 같이 받으셨네요. 네이버로 결제한 금액만 적어주시면 수수료를 정확히 잡습니다.';
   var cardAmt = Math.max(0, payTotal() - b);
-  var cr = String(PAY.pay||'').indexOf('체크') >= 0 ? PAY.debitRate : PAY.creditRate;
+  var pp = String(PAY.pay||''), cr = pp.indexOf('해외') >= 0 ? PAY.foreignRate : (pp.indexOf('체크') >= 0 ? PAY.debitRate : PAY.creditRate);
   return '네이버 ' + won(Math.round(b * PAY.feeRate / 100)) + '원 + 카드 ' +
          won(Math.round(cardAmt * cr / 100)) + '원 = 수수료 약 ' +
          won(Math.round(b * PAY.feeRate / 100) + Math.round(cardAmt * cr / 100)) + '원';
@@ -988,6 +999,7 @@ function payNpay(){
   var el = $('pay-np'); if(el) el.innerHTML = payNpayHtml();
 }
 function savePay(btn){
+  if(payTotal() < 0){ toast('할인이 시술 금액보다 커서 실결제금액이 0원보다 작아요. 금액을 다시 확인해 주세요.'); return; }
   busy(btn, '저장 중…');
   call('api_savePayment',[{resno:PAY.resno, items:PAY.items, discount:PAY.discount, pay:PAY.pay, staff:PAY.staff, npay:(payMixed()?PAY.npay:0)}]).then(function(r){
     done(btn);

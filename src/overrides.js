@@ -934,3 +934,68 @@ function api_testSms(to) {
     return { ok: r.ok, msg: r.ok ? '보냈어요. 휴대폰에서 받았는지 확인해 주세요.' : ('알리고 답: ' + (j.message || r.raw || '알 수 없음')) };
   } catch (e) { return { ok: false, msg: e.message }; }
 }
+
+/* =========================================================
+ *  자동 안내 문자 (2026-11-20)
+ *  - 당신을그리다: 팅커뷰가 보내므로 자동 안내(확정·사전·전일·당일)는 건너뜁니다. 개별 발송은 그대로.
+ *  - 닥터뷰티랩: 예약 확정 직후 + 전날 오후 2시, 아래 문구로 보냅니다.
+ * ========================================================= */
+var APP_BASE_URL = 'https://crm.drawyourlife.co.kr';
+function autoOffShop(shopName) { return shopNo(shopName) === 1; }
+
+var DBL_TPL = {
+  '확정': "[닥터뷰티랩] 예약이 확인되었습니다\n\n#{고객명}님, 예약해 주셔서 감사합니다.\n▶ 일시: #{날짜요일} #{시각}\n같은 시간에 예약이 겹친 경우에는 따로 연락드리겠습니다.\n\n■ 상담지 (방문 전 작성 필수)\n보건복지부 「문신시술 표준지침」에 따라 시술 전 건강 상태를 확인합니다.\n방문 전에 아래 상담지를 꼭 작성해 주십시오.\n확인이 필요한 경우 따로 연락드리겠습니다.\n#{상담지링크}\n링크 작성이 어려우신 분은 매장에서 작성하셔도 됩니다.\n\n■ 시술 부위에 예전 문신 자국(잔흔)이 있으신가요?\n처음 시술받으시는 분은 해당되지 않습니다.\n잔흔이 있으시면 시술 전에 반드시 사전 상담이 필요합니다.\n시술 부위 사진을 네이버 톡톡으로 보내 주십시오.\n사진 보내기가 어려우시면 전화 주셔도 됩니다.\n톡톡: https://talk.naver.com/ct/w5xote\n전화: 010-2722-3093\n\n■ 아래에 해당되시면 미리 연락 주십시오\n· 임신 중이거나 수유 중인 경우\n· 피를 묽게 하는 약을 드시는 경우\n· 당뇨로 상처가 잘 아물지 않는 경우\n· 켈로이드 피부, 여드름이 심한 피부, 트러블이 많은 두피\n\n■ 예약 안내\n· 100% 예약제로 운영합니다. 손님 한 분을 위해 시간을 비워 두고 준비합니다.\n· 예약 변경은 예약일 3일 전까지 1회 가능합니다.\n· 취소 시 환불은 네이버 예약 취소·환불 규정에 따릅니다.\n  - 7일 전까지: 전액 환불\n  - 6~5일 전: 30% 차감\n  - 4~3일 전: 50% 차감\n  - 2일 전부터 당일: 취소 불가\n· 연락 없이 오지 않으시면 예약이 취소되며, 예약금은 환불되지 않습니다.\n· 15분 이상 늦으시면 다음 예약 손님을 위해 예약이 자동 취소되며, 예약금은 환불되지 않습니다.\n· 잔흔이나 위 내용을 미리 알려 주시지 않고 방문하셔서 당일 시술이 어려운 경우에도 예약금은 돌려드리기 어렵습니다.\n\n■ 예약일이 가까운 날 예약하신 분\n예약일 7일 안으로 예약하셨다면, 이 문자를 받으신 당일 안에 연락 주시면 위약금 없이 변경·취소해 드립니다.\n\n■ 디자인 안내\n닥터뷰티랩은 얼굴에 자연스럽게 어울리는 시술을 지향합니다.\n과하거나 결과가 좋지 않을 것으로 판단되는 디자인은 시술이 어려운 점 양해 부탁드립니다.\n상담을 통해 가장 잘 어울리는 디자인을 함께 찾아 드리겠습니다.\n\n시술 전날 주의사항을 한 번 더 보내 드리겠습니다.",
+  '전일': "[닥터뷰티랩] 내일 예약 안내\n\n#{고객명}님, 내일 뵙겠습니다.\n▶ 일시: #{날짜요일} #{시각}\n\n■ 오늘 밤\n· 음주는 삼가시고 푹 주무시고 오십시오.\n\n■ 내일 오시기 전에\n· 커피 등 카페인은 줄여 주십시오.\n· 두피 시술은 머리를 감고, 어두운 색의 편한 옷을 입고 오십시오.\n\n■ 상담지\n아직 작성하지 않으셨다면 방문 전에 작성해 주십시오.\n#{상담지링크}\n\n■ 주차\n· 건물 지하 주차장 2시간 무료\n· 2인 이상이거나 2부위 이상 시술하시면 이너매스마곡1에 주차해 주십시오.\n\n■ 오시는 길\nhttps://naver.me/GL80O8yd\n문의 010-2722-3093"
+};
+
+/* 예약 1건의 상담지 링크: 아직 안 쓴 링크가 살아 있으면 그대로, 없으면 새로 만듭니다 */
+function consentUrlFor_(v) {
+  try {
+    var resno = String(v[D.RESNO - 1] || '');
+    if (!resno) return '';
+    var now = nowStr(), found = '';
+    linkRows().v.forEach(function (r) {
+      if (String(r[6]) === resno && String(r[3]) === '대기' && String(r[2]) >= now) found = String(r[0]);
+    });
+    if (found) return APP_BASE_URL + '/s/' + found;
+    var saved = CUR; if (!CUR || !CUR.name) CUR = { role: 'owner', name: '자동발송' };
+    var res = api_consentLink({ resno: resno });
+    CUR = saved;
+    if (res && res.ok) {
+      var m = String(res.url || res.path || res.link || '').match(/\/s\/[A-Za-z0-9]+/);
+      if (m) return APP_BASE_URL + m[0];
+    }
+    /* 응답 형식이 달라도 방금 만든 줄에서 토큰을 찾습니다 */
+    var tok = '';
+    linkRows().v.forEach(function (r) { if (String(r[6]) === resno && String(r[3]) === '대기') tok = String(r[0]); });
+    return tok ? APP_BASE_URL + '/s/' + tok : '';
+  } catch (e) { logError('상담지 링크 만들기', e); return ''; }
+}
+
+function buildMessage(v, type) {
+  var base = { '사전': '문구_사전', '전일': '문구_전일', '당일': '문구_당일', '확정': '문구_확정', '개별': '문구_확정' }[type] || '문구_확정';
+  var shop = v[D.SHOP - 1] || '';
+  var tpl = (shopNo(shop) === 2 && DBL_TPL[type]) ? DBL_TPL[type] : '';
+  if (!tpl) tpl = String(cfgStr('샵' + shopNo(shop) + ' ' + base, '')).trim();
+  if (!tpl) tpl = String(cfgStr(base, '')).trim();
+  if (!tpl) tpl = '[#{샵}] #{이름}님, #{날짜} #{시간} 예약 안내드립니다.';
+  var name = v[D.NAME - 1] || '고객';
+  var time = timeStr(v[D.TIME - 1]);
+  if (tpl.indexOf('#{상담지링크}') >= 0) {
+    var url = consentUrlFor_(v);
+    tpl = tpl.replace(/#\{상담지링크\}/g, url || '(링크는 매장에서 따로 보내 드립니다)');
+  }
+  return tpl
+    .replace(/#\{샵\}/g, shop)
+    .replace(/#\{상점명\}/g, shop)
+    .replace(/#\{이름\}/g, name)
+    .replace(/#\{고객명\}/g, name)
+    .replace(/#\{날짜\}/g, ymd(v[D.DATE - 1]))
+    .replace(/#\{시간\}/g, time)
+    .replace(/#\{예약일시\}/g, whenText(v[D.DATE - 1], time))
+    .replace(/#\{날짜요일\}/g, dayText(v[D.DATE - 1]))
+    .replace(/#\{시각\}/g, clockText(time))
+    .replace(/#\{소요시간\}/g, minText(bookingMinutes(v)))
+    .replace(/#\{상품\}/g, v[D.PRODUCT - 1] || '')
+    .replace(/#\{옵션\}/g, v[D.OPTION - 1] || '');
+}
