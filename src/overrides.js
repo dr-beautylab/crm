@@ -1011,7 +1011,9 @@ function daysBetween_(a, b) {   /* 'yyyy-MM-dd' 두 날짜 사이 일수 (b - a)
   return Math.round((Date.UTC(y.getFullYear(), y.getMonth(), y.getDate()) - Date.UTC(x.getFullYear(), x.getMonth(), x.getDate())) / 86400000);
 }
 function addDays_(d, n) { var t = toDate(d); t.setDate(t.getDate() + n); return ymd(t); }
-function slogByDate_() { return readSlog().slice().sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); }); }
+function drShop_() { var n = ''; shops().forEach(function (x) { if (x.idx === 2) n = x.name; }); return n; }
+/* 닥터뷰티랩 매출만 날짜순으로 (당신을그리다 '아이브로우' 같은 항목이 섞이지 않게) */
+function slogByDate_() { var dr = drShop_(); return readSlog().filter(function (g) { return g.shop === dr; }).sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); }); }
 
 /* 2회를 함께 결제했는데 아직 2회차 결제(0원 포함)가 없는 손님 */
 function twoLeftList_() {
