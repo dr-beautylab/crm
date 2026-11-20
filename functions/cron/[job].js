@@ -4,7 +4,7 @@ import { run, json, keyOK } from '../../src/store.js';
 const JOBS = {
   settle: g => g.autoSettle(true),
   /* 매일 오후 2시: 사전 안내 + 전날 안내(닥터뷰티랩) 함께 */
-  advance: g => { g.sendReminderAdvance(); g.sendReminderTomorrow(); },
+  advance: g => { g.sendReminderAdvance(); g.sendReminderTomorrow(); g.sendRetouchYear(); },
   tomorrow: g => g.sendReminderTomorrow(),
   today: g => g.sendReminderToday(),
   daily: g => g.dailyMaintenance(),

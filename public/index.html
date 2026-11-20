@@ -525,6 +525,31 @@ function renderHome(){
     h += '</div></div>';
     h += '<p style="font-size:.78rem;color:var(--muted);padding:2px 4px 0">시술이 끝난 뒤 [결제 등록]한 금액만 매출로 잡힙니다.</p>';
 
+    if(d.twoLeft && d.twoLeft.length){
+      h += '<div class="sec-title">2회차 시술 남은 손님</div><div class="card">';
+      d.twoLeft.forEach(function(x){
+        h += '<button class="bk" onclick="openCustomer(\'' + esc(x.custId) + '\')">' +
+          '<span class="bk-bar"></span>' +
+          '<span class="bk-m"><span class="bk-n">' + esc(x.name) + '</span>' +
+          '<span class="bk-p">' + esc(x.item) + ' · ' + esc(x.date) + ' 결제</span></span>' +
+          '<span class="bk-r"><span class="tag">' + x.days + '일 지남</span></span></button>';
+      });
+      h += '</div>';
+    }
+    if(d.browRetouch && d.browRetouch.length){
+      h += '<div class="sec-title">눈썹 무료 리터치 기간 (시술 후 4~8주)</div><div class="card">';
+      d.browRetouch.forEach(function(x){
+        var tag = x.state === '기간 지남' ? '<span class="tag bad">기간 지남</span>' :
+                  (x.state === '기간 전' ? '<span class="tag">' + esc(x.start.slice(5).replace('-','/')) + '부터</span>' :
+                   '<span class="tag bad">D-' + x.left + '</span>');
+        h += '<button class="bk" onclick="openCustomer(\'' + esc(x.custId) + '\')">' +
+          '<span class="bk-bar"></span>' +
+          '<span class="bk-m"><span class="bk-n">' + esc(x.name) + '</span>' +
+          '<span class="bk-p">' + esc(x.start) + ' ~ ' + esc(x.end) + ' · 첫 시술 ' + esc(x.browDate) + '</span></span>' +
+          '<span class="bk-r">' + tag + '</span></button>';
+      });
+      h += '</div>';
+    }
     if(d.lowRound && d.lowRound.length){
       h += '<div class="sec-title">잔여회차 1회 이하 · 재구매 안내 대상</div><div class="card">';
       d.lowRound.forEach(function(c){
@@ -909,7 +934,19 @@ function saveBooking(resno){
   }).catch(fail);
 }
 /* ── 결제(매출) 등록 ── */
-var PAY = { resno:'', menu:[], items:[], discount:0, b:null, pay:'', staff:'', npay:0, feeRate:0, creditRate:0, debitRate:0, foreignRate:0, payList:[], staffList:[] };
+var PAY = { resno:'', menu:[], items:[], discount:0, b:null, staff:'', feeRate:0, creditRate:0, debitRate:0, foreignRate:0,
+            payList:[], staffList:[], splits:[], scalp:null, extra:null, calc:null };
+var SCALP_SPOTS = ['헤어라인','M자 이마','정수리','가르마','구레나룻','원형탈모','흉터커버'];
+function payBaseList(){ return (PAY.payList||[]).filter(function(x){ return x.indexOf('+') < 0; }); }
+function splitsFromSaved(pay, npay, total){
+  pay = String(pay||'');
+  if(pay.indexOf(':') >= 0) return pay.split('+').map(function(x){ var a = x.split(':'); return { m:a[0], amt:Number(a[1]||0) }; });
+  if(pay.indexOf('+') >= 0){
+    var ms = pay.split('+'), n = Number(npay||0);
+    return [{ m:ms[0], amt:Math.max(0, total - n) }, { m:ms[1], amt:n }];
+  }
+  return [{ m:pay, amt:0 }];
+}
 function openPay(resno){
   toast('불러오는 중…');
   call('api_payment',[resno]).then(function(r){
@@ -918,11 +955,18 @@ function openPay(resno){
     PAY.items = (r.items||[]).map(function(it){ return {name:it.name, amount:Number(it.amount||0)}; });
     if(!PAY.items.length) PAY.items = [{name:'', amount:0}];
     PAY.discount = Number(r.discount||0);
-    PAY.pay = r.pay||''; PAY.staff = r.staff||'';
-    PAY.npay = Number(r.npay||0); PAY.feeRate = Number(r.feeRate||0);
+    PAY.staff = r.staff||'';
+    PAY.feeRate = Number(r.feeRate||0);
     PAY.creditRate = Number(r.creditRate||0); PAY.debitRate = Number(r.debitRate||0); PAY.foreignRate = Number(r.foreignRate||0);
     PAY.payList = r.payList||[]; PAY.staffList = r.staffList||[];
+    PAY.scalp = r.scalp || { one:250000, twoPre:450000 };
+    PAY.splits = splitsFromSaved(r.pay, r.npay, payTotal());
+    PAY.extra = null;
+    PAY.calc = { spots:{}, parts:'', service:'', mode:'1', friend:'' };
     drawPay();
+    if(shopIdx(PAY.b.shop) === 2 && PAY.b.custId){
+      call('api_custExtra',[PAY.b.custId]).then(function(x){ if(x && x.ok){ PAY.extra = x; var el = $('pay-extra'); if(el) el.innerHTML = payExtraHtml(); } }).catch(function(){});
+    }
   }).catch(fail);
 }
 function payTotal(){
@@ -930,8 +974,102 @@ function payTotal(){
   PAY.items.forEach(function(it){ t += Number(it.amount||0); });
   return t - Number(PAY.discount||0);
 }
+function payExtraHtml(){
+  var x = PAY.extra; if(!x) return '';
+  var h = '';
+  if(x.two) h += '<p style="margin:0 0 6px;color:var(--bad);font-weight:700">2회차 시술 남은 손님이에요 (' + esc(x.two.date) + ' 2회 함께 결제). 오늘이 2회차면 아래 계산에서 "2회차"를 고르세요.</p>';
+  if(x.brow && !x.brow.retouched){
+    var b = x.brow;
+    h += '<p style="margin:0 0 6px;' + (b.state === '기간 지남' ? 'color:var(--bad);font-weight:700' : '') + '">눈썹 무료 리터치 기간: ' +
+      esc(b.start) + ' ~ ' + esc(b.end) + ' · ' + (b.state === '기간 중' ? '기간 중 (D-' + b.left + ')' : esc(b.state)) + '</p>';
+  }
+  return h ? '<div class="card" style="margin-bottom:8px"><div class="card-b" style="font-size:.85rem">' + h + '</div></div>' : '';
+}
+/* 두피 금액 계산 (닥터뷰티랩) */
+function calcHtml(){
+  var c = PAY.calc, sp = PAY.scalp;
+  var chips = SCALP_SPOTS.map(function(x, i){
+    return '<label class="ck" style="display:inline-flex;gap:5px;margin:0 10px 6px 0"><input type="checkbox" ' + (c.spots[x]?'checked ':'') +
+      'onchange="PAY.calc.spots[\'' + x + '\']=this.checked">' + x + '</label>'; }).join('');
+  return '<div class="card" style="margin-bottom:8px"><div class="card-b">' +
+    '<div style="font-weight:700;margin-bottom:6px">두피 금액 계산</div>' +
+    '<div style="font-size:.85rem;margin-bottom:4px">시술 위치</div><div>' + chips + '</div>' +
+    '<div class="grid2">' +
+      '<div class="field"><label>부위 수 (명함 1장 = 1부위, 서비스 포함)</label><input type="number" inputmode="numeric" value="' + esc(c.parts) + '" oninput="PAY.calc.parts=this.value"></div>' +
+      '<div class="field"><label>그중 서비스 부위</label><input type="number" inputmode="numeric" value="' + esc(c.service) + '" oninput="PAY.calc.service=this.value" placeholder="0"></div>' +
+    '</div>' +
+    '<div class="grid2">' +
+      '<div class="field"><label>횟수</label><select onchange="PAY.calc.mode=this.value">' +
+        [['1','1회 (부위당 ' + won(sp.one) + '원)'],['2','2회 함께 결제 (부위당 ' + won(sp.twoPre) + '원)'],['r2','2회차 (이미 결제)']].map(function(o){
+          return '<option value="' + o[0] + '"' + (c.mode===o[0]?' selected':'') + '>' + o[1] + '</option>'; }).join('') +
+      '</select></div>' +
+      '<div class="field"><label>지인 할인</label><input type="number" inputmode="numeric" value="' + esc(c.friend) + '" oninput="PAY.calc.friend=this.value" placeholder="0"></div>' +
+    '</div>' +
+    '<button class="btn sub" onclick="applyCalc()">이 내용으로 금액 넣기</button>' +
+    '</div></div>';
+}
+function applyCalc(){
+  var c = PAY.calc, sp = PAY.scalp;
+  var n = Math.max(0, Number(c.parts||0)), sv = Math.max(0, Number(c.service||0)), fr = Math.max(0, Number(c.friend||0));
+  if(!n){ toast('부위 수를 넣어 주세요'); return; }
+  if(sv > n){ toast('서비스 부위가 전체 부위보다 많아요'); return; }
+  var spots = SCALP_SPOTS.filter(function(x){ return c.spots[x]; });
+  var tail = (spots.length ? spots.join('·') : '') + (sv ? (spots.length ? ', ' : '') + '서비스 ' + sv + '부위' : '');
+  var name, full = 0, disc = 0;
+  if(c.mode === 'r2'){
+    name = '두피 ' + n + '부위 2회차';
+  } else if(c.mode === '2'){
+    name = '두피 ' + n + '부위 2회 함께 결제';
+    full = sp.one * 2 * n;
+    disc = (sp.one * 2 - sp.twoPre) * n + sp.twoPre * sv + fr;
+  } else {
+    name = '두피 ' + n + '부위 1회';
+    full = sp.one * n;
+    disc = sp.one * sv + fr;
+  }
+  if(tail) name += ' (' + tail + ')';
+  PAY.items = [{ name:name, amount:full }];
+  PAY.discount = disc;
+  drawPay();
+  toast('정가 ' + won(full) + '원 · 할인 ' + won(disc) + '원으로 넣었어요');
+}
+/* 결제수단 여러 개 */
+function splitRowsHtml(){
+  var base = payBaseList(), many = PAY.splits.length > 1;
+  return PAY.splits.map(function(x, i){
+    return '<div style="display:grid;grid-template-columns:' + (many ? '1fr 1fr 40px' : '1fr') + ';gap:7px;margin-bottom:8px">' +
+      '<select onchange="PAY.splits[' + i + '].m=this.value;payFee()">' + selOpts(base, x.m, '결제수단 선택') + '</select>' +
+      (many ? '<input type="number" inputmode="numeric" placeholder="금액" value="' + (x.amt||'') + '" oninput="PAY.splits[' + i + '].amt=this.value;payFee()">' +
+              '<button class="btn danger" style="padding:0" onclick="PAY.splits.splice(' + i + ',1);redrawSplits()">✕</button>' : '') +
+      '</div>';
+  }).join('') +
+  '<button class="btn sub" style="margin-bottom:8px" onclick="PAY.splits.push({m:\'\',amt:0});redrawSplits()">＋ 결제수단 나눠 넣기</button>';
+}
+function redrawSplits(){
+  if(PAY.splits.length === 1) PAY.splits[0].amt = 0;
+  var el = $('pay-split'); if(el) el.innerHTML = splitRowsHtml(); payFee();
+}
+function rateFor(m){
+  m = String(m||'');
+  if(m.indexOf('네이버') >= 0) return PAY.feeRate;
+  if(m.indexOf('카드') < 0) return 0;
+  if(m.indexOf('해외') >= 0) return PAY.foreignRate;
+  return m.indexOf('체크') >= 0 ? PAY.debitRate : PAY.creditRate;
+}
+function payFeeText(){
+  var t = payTotal(), list = PAY.splits;
+  if(list.length === 1){
+    var r1 = rateFor(list[0].m);
+    return r1 ? '수수료 약 ' + won(Math.round(t * r1 / 100)) + '원' : '';
+  }
+  var sum = 0, fee = 0;
+  list.forEach(function(x){ var a = Number(x.amt||0); sum += a; fee += Math.round(a * rateFor(x.m) / 100); });
+  var diff = t - sum;
+  return '수수료 약 ' + won(fee) + '원' + (diff ? ' · <b style="color:var(--bad)">나눠 넣은 합계가 실결제금액과 ' + won(Math.abs(diff)) + '원 ' + (diff > 0 ? '모자라요' : '많아요') + '</b>' : '');
+}
+function payFee(){ var el = $('pay-fee'); if(el) el.innerHTML = payFeeText(); }
 function drawPay(){
-  var b = PAY.b;
+  var b = PAY.b, isDr = shopIdx(b.shop) === 2;
   var rows = PAY.items.map(function(it, i){
     var opts = '<option value="">직접 입력</option>' + PAY.menu.map(function(m){
       return '<option value="'+esc(m.name)+'"'+(m.name===it.name?' selected':'')+'>'+esc(m.name)+'</option>'; }).join('');
@@ -939,27 +1077,27 @@ function drawPay(){
       '<div class="field"><label>시술 ' + (i+1) + ' — 메뉴에서 고르기</label>' +
         '<select onchange="payPick(' + i + ',this.value)">' + opts + '</select></div>' +
       '<div class="field"><label>시술명</label><input value="' + esc(it.name) + '" oninput="PAY.items[' + i + '].name=this.value"></div>' +
-      '<div class="field"><label>금액</label><input type="number" inputmode="numeric" value="' + (it.amount||'') + '" oninput="PAY.items[' + i + '].amount=this.value;paySum()"></div>' +
+      '<div class="field"><label>금액 (정가)</label><input type="number" inputmode="numeric" value="' + (it.amount||'') + '" oninput="PAY.items[' + i + '].amount=this.value;paySum()"></div>' +
       (PAY.items.length>1 ? '<button class="btn danger" onclick="PAY.items.splice(' + i + ',1);drawPay()">이 항목 빼기</button>' : '') +
       '</div></div>';
   }).join('');
   openSheet(
     '<h2>결제 등록</h2><p class="sub">' + esc(b.name) + ' · ' + human(b.date) + ' ' + esc(b.time) + '</p>' +
+    '<div id="pay-extra">' + payExtraHtml() + '</div>' +
+    (isDr ? calcHtml() : '') +
     rows +
     '<button class="btn sub" onclick="PAY.items.push({name:\'\',amount:0});drawPay()">＋ 시술 항목 추가</button>' +
     '<div class="field" style="margin-top:12px"><label>할인 금액</label>' +
       '<input type="number" inputmode="numeric" value="' + (PAY.discount||'') + '" oninput="PAY.discount=this.value;paySum()" placeholder="0"></div>' +
     '<div class="card"><div class="card-b"><div class="kv">' +
       '<span style="font-weight:700">실결제금액</span>' +
-      '<b id="pay-sum" style="color:var(--plum);font-weight:700;font-size:1.05rem">' + won(payTotal()) + '원</b>' +
+      '<b id="pay-sum" style="color:' + (payTotal() < 0 ? 'var(--bad)' : 'var(--plum)') + ';font-weight:700;font-size:1.05rem">' + won(payTotal()) + '원</b>' +
       '</div></div></div>' +
-    '<div class="grid2" style="margin-top:10px">' +
-      '<div class="field"><label>결제수단</label><select onchange="PAY.pay=this.value;payNpay()">' +
-        selOpts(PAY.payList, PAY.pay, '선택 안 함') + '</select></div>' +
-      '<div class="field"><label>담당자</label><select onchange="PAY.staff=this.value">' +
+    '<div class="field" style="margin-top:10px"><label>결제수단</label></div>' +
+    '<div id="pay-split">' + splitRowsHtml() + '</div>' +
+    '<p id="pay-fee" style="font-size:.8rem;color:var(--muted);margin:-2px 0 10px;padding:0 4px">' + payFeeText() + '</p>' +
+    '<div class="field"><label>담당자</label><select onchange="PAY.staff=this.value">' +
         selOpts(PAY.staffList, PAY.staff, '지정 안 함') + '</select></div>' +
-    '</div>' +
-    '<div id="pay-np">' + payNpayHtml() + '</div>' +
     '<button class="btn" style="margin-top:4px" onclick="savePay(this)">저장하고 이용완료 처리</button>' +
     '<div class="btnrow"><button class="btn sub" style="grid-column:1/3" onclick="closeSheet()">취소</button></div>'
   );
@@ -973,35 +1111,20 @@ function payPick(i, name){
   drawPay();
 }
 function paySum(){ var el = $('pay-sum'); if(el){ el.textContent = won(payTotal()) + '원'; el.style.color = payTotal() < 0 ? 'var(--bad)' : 'var(--plum)'; } payFee(); }
-
-/* 네이버 결제액: 카드와 섞어 받은 경우에만 따로 물어봅니다 */
-function payMixed(){ var p = String(PAY.pay||''); return p.indexOf('네이버') >= 0 && p.indexOf('카드') >= 0; }
-function payNpayHtml(){
-  if(!payMixed()) return '';
-  return '<div class="field"><label>이 중 네이버로 결제한 금액</label>' +
-    '<input id="pay-np-i" type="number" inputmode="numeric" value="' + (PAY.npay||'') +
-    '" oninput="PAY.npay=this.value;payFee()" placeholder="0"></div>' +
-    '<p id="pay-fee" style="font-size:.8rem;color:var(--muted);margin:-6px 0 10px;padding:0 4px">' +
-    payFeeText() + '</p>';
-}
-function payFeeText(){
-  var b = Number(PAY.npay||0);
-  if(!b) return '카드와 네이버페이를 같이 받으셨네요. 네이버로 결제한 금액만 적어주시면 수수료를 정확히 잡습니다.';
-  var cardAmt = Math.max(0, payTotal() - b);
-  var pp = String(PAY.pay||''), cr = pp.indexOf('해외') >= 0 ? PAY.foreignRate : (pp.indexOf('체크') >= 0 ? PAY.debitRate : PAY.creditRate);
-  return '네이버 ' + won(Math.round(b * PAY.feeRate / 100)) + '원 + 카드 ' +
-         won(Math.round(cardAmt * cr / 100)) + '원 = 수수료 약 ' +
-         won(Math.round(b * PAY.feeRate / 100) + Math.round(cardAmt * cr / 100)) + '원';
-}
-function payFee(){ var el = $('pay-fee'); if(el) el.textContent = payFeeText(); }
-function payNpay(){
-  if(!payMixed()) PAY.npay = 0;
-  var el = $('pay-np'); if(el) el.innerHTML = payNpayHtml();
-}
 function savePay(btn){
-  if(payTotal() < 0){ toast('할인이 시술 금액보다 커서 실결제금액이 0원보다 작아요. 금액을 다시 확인해 주세요.'); return; }
+  var t = payTotal();
+  if(t < 0){ toast('할인이 시술 금액보다 커서 실결제금액이 0원보다 작아요. 금액을 다시 확인해 주세요.'); return; }
+  var list = PAY.splits.filter(function(x){ return x.m; }), pay = '', npay = 0;
+  if(list.length > 1){
+    var sum = 0; list.forEach(function(x){ sum += Number(x.amt||0); });
+    if(sum !== t){ toast('나눠 넣은 금액 합계(' + won(sum) + '원)가 실결제금액(' + won(t) + '원)과 달라요'); return; }
+    pay = list.map(function(x){ return x.m + ':' + Number(x.amt||0); }).join('+');
+    list.forEach(function(x){ if(x.m.indexOf('네이버') >= 0) npay += Number(x.amt||0); });
+  } else if(list.length === 1){
+    pay = list[0].m; if(pay.indexOf('네이버') >= 0) npay = t;
+  }
   busy(btn, '저장 중…');
-  call('api_savePayment',[{resno:PAY.resno, items:PAY.items, discount:PAY.discount, pay:PAY.pay, staff:PAY.staff, npay:(payMixed()?PAY.npay:0)}]).then(function(r){
+  call('api_savePayment',[{resno:PAY.resno, items:PAY.items, discount:PAY.discount, pay:pay, staff:PAY.staff, npay:npay}]).then(function(r){
     done(btn);
     if(!r.ok){ toast(r.msg||'저장하지 못했습니다'); return; }
     closeSheet(); toast('매출 ' + won(r.total) + '원으로 등록했습니다');
@@ -1357,7 +1480,25 @@ function openCustomer(id){
     APP.cust = r;
     drawCustomer();
     loadEsign(id);
+    loadCustExtra(id);
   }).catch(function(e){ closeSheet(); fail(e); });
+}
+function custExtraHtml(x){
+  var h = '';
+  if(x.two) h += '<div class="kv"><span>2회차 시술</span><b style="color:var(--bad)">남음 · ' + esc(x.two.date) + ' 결제</b></div>';
+  if(x.brow){
+    var b = x.brow, st = b.state === '기간 중' ? ('기간 중 · D-' + b.left) : b.state;
+    h += '<div class="kv"><span>눈썹 무료 리터치</span><b' + (b.state === '기간 지남' ? ' style="color:var(--bad)"' : '') + '>' +
+      esc(b.start) + ' ~ ' + esc(b.end) + ' · ' + esc(st) + '</b></div>';
+  }
+  if(x.referred) h += '<div class="kv"><span>소개한 손님</span><b>' + x.referred + '명 <span style="color:var(--muted);font-weight:500">(' + esc(x.referredNames.join(', ')) + ')</span></b></div>';
+  return h ? '<div class="card" style="margin-bottom:8px"><div class="card-b">' + h + '</div></div>' : '';
+}
+function loadCustExtra(id){
+  call('api_custExtra',[id]).then(function(x){
+    if(!x || !x.ok) return;
+    var el = $('cx-extra'); if(el) el.innerHTML = custExtraHtml(x);
+  }).catch(function(){});
 }
 function selOpts(list, cur, blank){
   var h = '<option value="">' + esc(blank||'—') + '</option>';
@@ -1436,6 +1577,7 @@ function drawCustomer(){
     '<p style="font-size:.8rem;color:var(--muted);padding:0 4px;margin:0 0 6px">' +
       '다음 예약: <b>' + (c.next ? esc(c.next) : '없음') + '</b></p>' +
 
+    '<div id="cx-extra"></div>' +
     '<div class="sec-title">회차 상품</div>' +
     '<div class="grid2">' +
       '<div class="field"><label>회차상품</label><input id="k-product" value="' + esc(c.product) + '"></div>' +
@@ -1643,7 +1785,8 @@ function openSourceStats(days){
       '<div class="btnrow" style="grid-template-columns:repeat(3,1fr)">' + pick + '</div>' +
       '<div class="sec-title">어디서 알고 오셨나</div><div class="card"><div class="card-b">' + bars(r.sources) + '</div></div>' +
       '<div class="sec-title">검색한 키워드</div><div class="card"><div class="card-b">' + bars(r.keywords) + '</div></div>' +
-      (r.referrers.length ? '<div class="sec-title">소개해 주신 분</div><div class="card"><div class="card-b">' + bars(r.referrers) + '</div></div>' : '') +
+      (r.referrers.length ? '<div class="sec-title">소개해 주신 분 (상담지 답변)</div><div class="card"><div class="card-b">' + bars(r.referrers) + '</div></div>' : '') +
+      ((r.refCustomers||[]).length ? '<div class="sec-title">소개 많이 해 주신 고객 (연결 고객 기준)</div><div class="card"><div class="card-b">' + bars(r.refCustomers) + '</div></div>' : '') +
       '<button class="btn sub" onclick="closeSheet()">닫기</button>');
   }).catch(fail);
 }
@@ -2599,6 +2742,10 @@ function openSmsCfg(){
         '<input id="sc-key" autocomplete="off" placeholder="' + (r.keyTail ? '바꿀 때만 새로 넣으세요' : '알리고에서 발급받은 키') + '"></div>' +
       '<div class="field"><label>발신번호 (알리고에 등록한 번호)</label><input id="sc-snd" type="tel" inputmode="tel" value="' + esc(r.sender) + '" placeholder="010-0000-0000"></div>' +
       '<label class="ck" style="margin:6px 0 12px"><input type="checkbox" id="sc-test"' + (r.test ? ' checked' : '') + '><span>테스트 모드 (체크하면 실제로 보내지 않고 기록만 남겨요)</span></label>' +
+      '<div class="sec-title">자동 발송 (닥터뷰티랩만 · 당신을그리다는 팅커뷰)</div>' +
+      '<label class="ck" style="margin:4px 0"><input type="checkbox" id="sc-a-confirm"' + (r.auto.confirm ? ' checked' : '') + '><span>예약 확정 즉시 안내</span></label>' +
+      '<label class="ck" style="margin:4px 0"><input type="checkbox" id="sc-a-tomorrow"' + (r.auto.tomorrow ? ' checked' : '') + '><span>전날 오후 2시 안내</span></label>' +
+      '<label class="ck" style="margin:4px 0 12px"><input type="checkbox" id="sc-a-ry"' + (r.auto.retouchYear ? ' checked' : '') + '><span>1년 리터치 안내 (광고 문자 · 수신 동의한 손님에게만 켜 주세요)</span></label>' +
       '<button class="btn" onclick="saveSmsCfg(this)">저장</button>' +
       '<div class="sec-title">시험 발송</div>' +
       '<div class="field"><input id="sc-to" type="tel" inputmode="tel" placeholder="받아볼 내 번호 010-…"></div>' +
@@ -2610,7 +2757,8 @@ function openSmsCfg(){
 }
 function saveSmsCfg(btn){
   busy(btn,'저장 중…');
-  call('api_saveSmsCfg',[{ userId:$('sc-uid').value, key:$('sc-key').value, sender:$('sc-snd').value, test:$('sc-test').checked }]).then(function(r){
+  call('api_saveSmsCfg',[{ userId:$('sc-uid').value, key:$('sc-key').value, sender:$('sc-snd').value, test:$('sc-test').checked,
+    auto:{ confirm:$('sc-a-confirm').checked, tomorrow:$('sc-a-tomorrow').checked, retouchYear:$('sc-a-ry').checked } }]).then(function(r){
     done(btn);
     if(!r.ok){ toast(r.msg||'저장하지 못했어요'); return; }
     if(APP.boot){ APP.boot.smsReady = r.ready; APP.boot.testMode = r.test; }

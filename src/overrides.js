@@ -293,7 +293,8 @@ function api_sourceStats(from, to) {
     });
   });
   function top(o) { return Object.keys(o).map(function (k) { return { name: k, n: o[k] }; }).sort(function (a, b) { return b.n - a.n; }); }
-  return { ok: true, count: n, sources: top(src), keywords: top(kw).slice(0, 30), referrers: top(ref).slice(0, 20) };
+  var refc = []; try { refc = topReferrers_(); } catch (e) {}
+  return { ok: true, count: n, sources: top(src), keywords: top(kw).slice(0, 30), referrers: top(ref).slice(0, 20), refCustomers: refc };
 }
 
 /* ---------- 팅커뷰 매출 옮겨 넣기 (대표만) ----------
@@ -900,7 +901,8 @@ function smsCfgView_() {
   return { ok: true, userId: cfgStr('알리고 사용자ID', ''), sender: cfgStr('발신번호', ''),
            keyTail: key ? key.slice(-4) : '', test: cfgOn('테스트 모드'), ready: aligoReady(),
            auto: { advance: cfgOn('사전 알림 사용'), advDays: advanceDays(), advTime: cfgStr('사전 알림 시각', '14:00'),
-                   confirm: cfgOn('확정 즉시 안내 사용'), tomorrow: cfgOn('전일 알림 사용'), today: cfgOn('당일 알림 사용') } };
+                   confirm: cfgOn('확정 즉시 안내 사용'), tomorrow: cfgOn('전일 알림 사용'), today: cfgOn('당일 알림 사용'),
+                   retouchYear: cfgOn('1년 리터치 안내 사용') } };
 }
 function api_smsCfg() {
   if (CUR.role !== 'owner') return { ok: false, msg: '대표만 볼 수 있어요.' };
@@ -915,7 +917,7 @@ function api_saveSmsCfg(p) {
     if (p.sender !== undefined && String(p.sender).trim()) setCfg('발신번호', String(p.sender).trim());
     if (p.test !== undefined) setCfg('테스트 모드', p.test ? '사용' : '미사용');
     if (p.auto) {
-      var A = { advance: '사전 알림 사용', tomorrow: '전일 알림 사용', today: '당일 알림 사용', confirm: '확정 즉시 안내 사용' };
+      var A = { advance: '사전 알림 사용', tomorrow: '전일 알림 사용', today: '당일 알림 사용', confirm: '확정 즉시 안내 사용', retouchYear: '1년 리터치 안내 사용' };
       Object.keys(A).forEach(function (k) { if (p.auto[k] !== undefined) setCfg(A[k], p.auto[k] ? '사용' : '미사용'); });
     }
     _cfgCache = null;
@@ -999,3 +1001,151 @@ function buildMessage(v, type) {
     .replace(/#\{상품\}/g, v[D.PRODUCT - 1] || '')
     .replace(/#\{옵션\}/g, v[D.OPTION - 1] || '');
 }
+
+/* =========================================================
+ *  2026-11-20 추가: 2회차 남음 · 눈썹 무료 리터치 기간 · 소개 손님 수 · 1년 리터치 문자 · 결제수단 나눠 넣기
+ * ========================================================= */
+function daysBetween_(a, b) {   /* 'yyyy-MM-dd' 두 날짜 사이 일수 (b - a) */
+  var x = toDate(a), y = toDate(b);
+  if (!x || !y) return null;
+  return Math.round((Date.UTC(y.getFullYear(), y.getMonth(), y.getDate()) - Date.UTC(x.getFullYear(), x.getMonth(), x.getDate())) / 86400000);
+}
+function addDays_(d, n) { var t = toDate(d); t.setDate(t.getDate() + n); return ymd(t); }
+function slogByDate_() { return readSlog().slice().sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); }); }
+
+/* 2회를 함께 결제했는데 아직 2회차 결제(0원 포함)가 없는 손님 */
+function twoLeftList_() {
+  var map = {};
+  slogByDate_().forEach(function (g) {
+    if (!g.custId || g.item === '할인') return;
+    var it = String(g.item || '');
+    if (/2회차/.test(it)) { if (map[g.custId]) map[g.custId].done = true; return; }
+    if (/부위\s*2회/.test(it) || /2회\s*함께/.test(it)) map[g.custId] = { custId: g.custId, name: g.name, date: g.date, item: it, done: false };
+  });
+  return Object.keys(map).map(function (k) { return map[k]; }).filter(function (x) { return !x.done; })
+    .map(function (x) { x.days = daysBetween_(x.date, ymd(new Date())); return x; })
+    .sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); });
+}
+
+/* 눈썹 무료 리터치: 첫 시술 후 4~8주(28~56일) 안에만 가능 */
+var BROW_RT_FROM = 28, BROW_RT_TO = 56;
+function isBrowRetouch_(it) { return /^\s*(눈썹|브로우)\s*리터치/.test(String(it || '')); }
+function isBrowMain_(it) { it = String(it || ''); return !isBrowRetouch_(it) && /(브로우|눈썹)/.test(it); }
+function browInfoAll_() {
+  var map = {};
+  slogByDate_().forEach(function (g) {
+    if (!g.custId) return;
+    if (isBrowMain_(g.item)) map[g.custId] = { custId: g.custId, name: g.name, browDate: g.date, retouched: '' };
+    else if (isBrowRetouch_(g.item) && map[g.custId] && g.date >= map[g.custId].browDate) map[g.custId].retouched = g.date;
+  });
+  var today = ymd(new Date());
+  return Object.keys(map).map(function (k) {
+    var x = map[k];
+    x.start = addDays_(x.browDate, BROW_RT_FROM); x.end = addDays_(x.browDate, BROW_RT_TO);
+    x.days = daysBetween_(x.browDate, today);
+    x.left = daysBetween_(today, x.end);
+    x.state = x.retouched ? '리터치 완료' : (x.days < BROW_RT_FROM ? '기간 전' : (x.days <= BROW_RT_TO ? '기간 중' : '기간 지남'));
+    return x;
+  });
+}
+/* 홈에 띄울 손님: 리터치 안 했고, 기간 시작 1주 전부터 기간 끝난 뒤 2주까지 */
+function browRetouchHome_() {
+  return browInfoAll_().filter(function (x) { return !x.retouched && x.days >= BROW_RT_FROM - 7 && x.days <= BROW_RT_TO + 14; })
+    .sort(function (a, b) { return String(a.end).localeCompare(String(b.end)); });
+}
+
+/* 소개: 연결 고객에 '소개받은 분'으로 들어간 사람 수 */
+function referList_(c) {
+  return relEntries(c.rel).filter(function (e) { return e.rel === '소개받은 분'; }).map(function (e) { return e.name; });
+}
+function topReferrers_() {
+  return readCustomers().map(custToObj).map(function (c) { var l = referList_(c); return { id: c.id, name: c.name, n: l.length, names: l }; })
+    .filter(function (x) { return x.n > 0; }).sort(function (a, b) { return b.n - a.n; }).slice(0, 30);
+}
+
+/* 고객 화면 덧붙임 정보 */
+function api_custExtra(id) {
+  try {
+    id = String(id || '').trim();
+    var c = null;
+    readCustomers().forEach(function (v) { if (String(v[C.ID - 1]).trim() === id) c = custToObj(v); });
+    if (!c) return { ok: false, msg: '고객을 찾지 못했습니다.' };
+    var brow = null; browInfoAll_().forEach(function (x) { if (x.custId === id) brow = x; });
+    var two = null; twoLeftList_().forEach(function (x) { if (x.custId === id) two = x; });
+    var refs = referList_(c);
+    return { ok: true, brow: brow, two: two, referred: refs.length, referredNames: refs };
+  } catch (e) { return { ok: false, msg: e.message }; }
+}
+
+/* ---------- 결제수단 나눠 넣기 ----------
+   결제수단 칸에 '네이버페이:180000+계좌이체:20000' 처럼 적어 둡니다 (예전 기록은 그대로 읽힘) */
+function payParts_(pay) {
+  pay = String(pay || '');
+  if (pay.indexOf(':') < 0) return null;
+  return pay.split('+').map(function (s) {
+    var m = s.split(':'); return { m: String(m[0] || '').trim(), amt: Number(String(m[1] || '').replace(/[^0-9.-]/g, '')) || 0 };
+  }).filter(function (x) { return x.m; });
+}
+function feeOf(byRes) {
+  var r = { naverBase: 0, cardBase: 0, naverFee: 0, cardFee: 0, fee: 0, mixed: 0 };
+  Object.keys(byRes).forEach(function (k) {
+    var b = byRes[k];
+    var amt = Number(b.amount || 0), np = Number(b.npay || 0);
+    var pay = String(b.pay || '');
+    var parts = payParts_(pay);
+    if (parts) {
+      parts.forEach(function (p) {
+        if (p.m.indexOf('네이버') >= 0) { r.naverBase += p.amt; r.naverFee += Math.round(p.amt * npayRate() / 100); }
+        else if (p.m.indexOf('카드') >= 0) { r.cardBase += p.amt; r.cardFee += Math.round(p.amt * cardRateOf(p.m) / 100); }
+      });
+      return;
+    }
+    var hasN = pay.indexOf('네이버') >= 0, hasC = pay.indexOf('카드') >= 0;
+    var cr = cardRateOf(pay);
+    if (hasN && hasC) {
+      if (np <= 0) { r.mixed++; return; }
+      var cardPart = Math.max(0, amt - np);
+      r.naverBase += np;  r.naverFee += Math.round(np * npayRate() / 100);
+      r.cardBase  += cardPart; r.cardFee += Math.round(cardPart * cr / 100);
+    } else if (hasN) {
+      var nb = np > 0 ? np : amt;
+      r.naverBase += nb; r.naverFee += Math.round(nb * npayRate() / 100);
+    } else if (hasC) {
+      r.cardBase += amt; r.cardFee += Math.round(amt * cr / 100);
+    }
+  });
+  r.fee = r.naverFee + r.cardFee;
+  return r;
+}
+
+/* ---------- 1년 리터치 안내 문자 (닥터뷰티랩, 대표가 켠 경우만) ----------
+   마지막 닥터뷰티랩 시술일로부터 정확히 1년 되는 날 오후 2시에 한 번 보냅니다. */
+var RETOUCH_YEAR_TPL = "(광고)[닥터뷰티랩]\n#{고객명}님, 안녕하세요.\n시술받으신 지 1년이 되었습니다.\n색이 옅어졌다면 리터치로 처음처럼 또렷하게 관리하실 수 있습니다.\n\n상담·예약: 네이버 톡톡 https://talk.naver.com/ct/w5xote\n문의 010-2722-3093\n\n수신을 원하지 않으시면 이 번호로 '수신거부'라고 답장 주십시오.";
+function sendRetouchYear() {
+  try {
+    if (!cfgOn('1년 리터치 안내 사용')) return { sent: 0 };
+    var dr = null; shops().forEach(function (s) { if (s.idx === 2) dr = s.name; });
+    if (!dr) return { sent: 0 };
+    var target = ymd(new Date(Date.now() - 365 * 86400000));
+    var lastBy = {};
+    readSlog().forEach(function (g) { if (g.shop === dr && g.custId && (!lastBy[g.custId] || g.date > lastBy[g.custId])) lastBy[g.custId] = g.date; });
+    var sent = 0;
+    readCustomers().map(custToObj).forEach(function (c) {
+      if (lastBy[c.id] !== target) return;
+      if (/수신거부/.test(c.tag + ' ' + c.memo)) return;
+      var to = c.phone || c.safe;
+      var key = 'RY-' + c.id + '-' + target;
+      var v = new Array(D_HEAD.length).fill('');
+      v[D.RESNO - 1] = key; v[D.SHOP - 1] = dr; v[D.NAME - 1] = c.name; v[D.PHONE - 1] = to;
+      if (!to) { logSend(v, '1년리터치', '-', '실패', '', '연락처 없음'); return; }
+      if (alreadySent(key, '1년리터치')) return;
+      var msg = RETOUCH_YEAR_TPL.replace(/#\{고객명\}/g, String(c.name || '고객').replace(/님$/, ''));
+      if (cfgOn('테스트 모드')) { logSend(v, '1년리터치', '테스트', '성공(테스트)', msg, '테스트 모드'); return; }
+      var res = sendSms(to, msg);
+      logSend(v, '1년리터치', 'SMS', res.ok ? '성공' : '실패', msg, res.raw);
+      if (res.ok) sent++;
+    });
+    return { sent: sent };
+  } catch (e) { logError('1년 리터치 안내', e); return { sent: 0 }; }
+}
+

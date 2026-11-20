@@ -3126,6 +3126,8 @@ function api_home() {
     lowRound: lowRound.slice(0, 20),
     monthSales: monthSales,
     todaySales: todaySales,
+    twoLeft: (function () { try { return twoLeftList_(); } catch (e) { return []; } })(),
+    browRetouch: (function () { try { return browRetouchHome_(); } catch (e) { return []; } })(),
     noPaid: noPaid,
     lastMail: cfgStr('마지막 메일확인 시각', '')
   };
@@ -3578,6 +3580,8 @@ function api_payment(resno) {
              pay: pay, staff: staff || found.staff || '', npay: npay, feeRate: npayRate(),
              payList: ['신용카드', '체크카드', '해외카드', '현금', '계좌이체', '네이버페이', '신용카드+네이버페이', '체크카드+네이버페이', '해외카드+네이버페이', '기타'],
              creditRate: creditRate(), debitRate: debitRate(), foreignRate: foreignRate(),
+             scalp: { one: Number(cfgStr('두피 부위당 1회 금액', '250000')) || 250000,
+                      twoPre: Number(cfgStr('두피 부위당 2회 함께 결제 금액', '450000')) || 450000 },
              staffList: cfgStr('담당자 명단', '').split(',').map(function (x) { return x.trim(); })
                           .filter(function (x) { return x; }) };
   } catch (e) { return { ok: false, msg: e.message }; }
@@ -4526,7 +4530,17 @@ function salesSum(rows, from, to, shop) {
     if (dt) res.byDow[dt.getDay()] += g.amount;
     res.byDay[g.date] = (res.byDay[g.date] || 0) + g.amount;
     var pk = g.pay || '미입력';
-    res.byPay[pk] = (res.byPay[pk] || 0) + g.amount;
+    var pparts = payParts_(pk);
+    if (pparts && g.item !== '할인') {
+      /* 나눠 받은 결제는 첫 줄에서 수단별로 한 번만 더합니다 */
+      if (!res.__payDone) res.__payDone = {};
+      if (!res.__payDone[g.resno]) {
+        res.__payDone[g.resno] = true;
+        pparts.forEach(function (x) { res.byPay[x.m] = (res.byPay[x.m] || 0) + x.amt; });
+      }
+    } else if (!pparts) {
+      res.byPay[pk] = (res.byPay[pk] || 0) + g.amount;
+    }
     if (g.custId) res.cust[g.custId] = (res.cust[g.custId] || 0) + 1;
     if (!byRes[g.resno]) {
       byRes[g.resno] = { resno: g.resno, date: g.date, shop: g.shop, name: g.name,
@@ -4545,6 +4559,7 @@ function salesSum(rows, from, to, shop) {
   res.npayMixed = fo.mixed;
   res.fee = fo.fee;
   res.net = res.total - res.fee;
+  delete res.__payDone;
   res.count = res.list.length;
   res.list.sort(function (a, b) { return a.date < b.date ? 1 : (a.date > b.date ? -1 : 0); });
   return res;
