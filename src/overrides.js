@@ -1207,3 +1207,20 @@ function api_patchHealthForms() {
     return { ok: true, helpRemoved: help, confirmAdded: added, total: out.length };
   } catch (e) { logError('건강 문항 반영', e); return { ok: false, msg: e.message }; }
 }
+
+/* 알리고가 실제로 거절한 발송을 발송로그에서 '실패'로 바로잡습니다 (store.js 가 호출) */
+function markSendFailures(list) {
+  var sh = sheetOf(SH.LOG), last = sh.getLastRow();
+  if (last < 2) return 0;
+  var v = sh.getRange(2, 1, last - 1, 10).getValues(), n = 0;
+  (list || []).forEach(function (b) {
+    var to = onlyDigits(b.to);
+    for (var i = v.length - 1; i >= 0; i--) {
+      if (onlyDigits(v[i][4]) === to && String(v[i][7]) === '성공') {
+        v[i][7] = '실패'; v[i][9] = '알리고 거절: ' + b.why;
+        sh.getRange(i + 2, 8).setValue('실패'); sh.getRange(i + 2, 10).setValue(v[i][9]); n++; break;
+      }
+    }
+  });
+  return n;
+}

@@ -52,6 +52,19 @@ export async function run(env, fn, extra = {}) {
       calls.push({ url: f.url, status: res.status, text: text.slice(0, 500) });
     } catch (e) { io.logs.push('외부호출 실패: ' + e.message); calls.push({ url: f.url, status: 0, text: '통신오류: ' + e.message }); }
   }
+  /* 알리고가 거절한 문자는 발송로그의 '성공'을 '실패'로 바로잡습니다 */
+  const bad = calls.filter(c => /aligo/.test(c.url) && /send/.test(c.url)).map((c, i) => ({ c, f: io.fetches.filter(f => /aligo/.test(f.url) && /send/.test(f.url))[i] }))
+    .filter(x => { let j = {}; try { j = JSON.parse(x.c.text); } catch (e) {} return String(j.result_code) !== '1' && String(j.code) !== '0'; })
+    .map(x => { let j = {}; try { j = JSON.parse(x.c.text); } catch (e) {} const p = (x.f && x.f.opt && x.f.opt.payload) || {};
+                return { to: String(p.receiver || p.receiver_1 || ''), why: j.message || x.c.text || ('HTTP ' + x.c.status) }; });
+  if (bad.length) {
+    try {
+      const book2 = await loadBook(env.DB);
+      const gas2 = makeGas(book2, { fetches: [], logs: [], mails: [] });
+      gas2.markSendFailures(bad);
+      await saveBook(env.DB, book2);
+    } catch (e) { io.logs.push('발송로그 고치기 실패: ' + e.message); }
+  }
   return { result, logs: io.logs, calls };
 }
 

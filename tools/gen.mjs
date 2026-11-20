@@ -26,7 +26,7 @@ ${overrides}
 
   const __API = { ${apiNames.map(n => `${n}: ${n}`).join(', ')} };
   return { __API, api, processBookingMails, autoSettle, sendReminderAdvance, sendReminderTomorrow,
-           sendReminderToday, sendRetouchYear, sendPendingConfirms, dailyMaintenance, setup, publicForm, publicSubmit, authOf, addPhotoRow, expiredPhotos, CUR: () => CUR };
+           sendReminderToday, sendRetouchYear, sendPendingConfirms, markSendFailures, dailyMaintenance, setup, publicForm, publicSubmit, authOf, addPhotoRow, expiredPhotos, CUR: () => CUR };
 }
 `;
 fs.writeFileSync(path.join(here, '../functions/_gas.js'), out);

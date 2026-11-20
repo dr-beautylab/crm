@@ -6420,8 +6420,25 @@ function api_patchHealthForms() {
   } catch (e) { logError('건강 문항 반영', e); return { ok: false, msg: e.message }; }
 }
 
+/* 알리고가 실제로 거절한 발송을 발송로그에서 '실패'로 바로잡습니다 (store.js 가 호출) */
+function markSendFailures(list) {
+  var sh = sheetOf(SH.LOG), last = sh.getLastRow();
+  if (last < 2) return 0;
+  var v = sh.getRange(2, 1, last - 1, 10).getValues(), n = 0;
+  (list || []).forEach(function (b) {
+    var to = onlyDigits(b.to);
+    for (var i = v.length - 1; i >= 0; i--) {
+      if (onlyDigits(v[i][4]) === to && String(v[i][7]) === '성공') {
+        v[i][7] = '실패'; v[i][9] = '알리고 거절: ' + b.why;
+        sh.getRange(i + 2, 8).setValue('실패'); sh.getRange(i + 2, 10).setValue(v[i][9]); n++; break;
+      }
+    }
+  });
+  return n;
+}
+
 
   const __API = { api_login: api_login, api_savePins: api_savePins, api_setPassword: api_setPassword, api_bootstrap: api_bootstrap, api_home: api_home, api_day: api_day, api_range: api_range, api_month: api_month, api_updateBooking: api_updateBooking, api_addBooking: api_addBooking, api_searchCustomers: api_searchCustomers, api_customer: api_customer, api_saveCustomer: api_saveCustomer, api_addCustomer: api_addCustomer, api_deleteCustomer: api_deleteCustomer, api_customerFolder: api_customerFolder, api_sales: api_sales, api_menu: api_menu, api_saveMenu: api_saveMenu, api_payment: api_payment, api_savePayment: api_savePayment, api_savePp: api_savePp, api_ppLog: api_ppLog, api_staffReport: api_staffReport, api_usage: api_usage, api_blocks: api_blocks, api_saveBlock: api_saveBlock, api_deleteBlock: api_deleteBlock, api_trash: api_trash, api_restoreTrash: api_restoreTrash, api_cash: api_cash, api_saveCash: api_saveCash, api_deleteCash: api_deleteCash, api_forms: api_forms, api_saveForms: api_saveForms, api_saveConsent: api_saveConsent, api_consents: api_consents, api_uploadPhoto: api_uploadPhoto, api_sendLog: api_sendLog, api_salesReport: api_salesReport, api_checkMail: api_checkMail, api_send: api_send, api_completePast: api_completePast, api_needAttention: api_needAttention, api_rescanRequests: api_rescanRequests, api_consentLink: api_consentLink, api_esignList: api_esignList, api_esignView: api_esignView, api_photos: api_photos, api_deletePhoto: api_deletePhoto, api_sourceStats: api_sourceStats, api_importTvSales: api_importTvSales, api_backfillCharts: api_backfillCharts, api_seedPmuForms: api_seedPmuForms, api_ackBlock: api_ackBlock, api_ackAllBlocks: api_ackAllBlocks, api_renameBooking: api_renameBooking, api_renameCustomer: api_renameCustomer, api_smsCfg: api_smsCfg, api_saveSmsCfg: api_saveSmsCfg, api_testSms: api_testSms, api_custExtra: api_custExtra, api_patchHealthForms: api_patchHealthForms };
   return { __API, api, processBookingMails, autoSettle, sendReminderAdvance, sendReminderTomorrow,
-           sendReminderToday, sendRetouchYear, sendPendingConfirms, dailyMaintenance, setup, publicForm, publicSubmit, authOf, addPhotoRow, expiredPhotos, CUR: () => CUR };
+           sendReminderToday, sendRetouchYear, sendPendingConfirms, markSendFailures, dailyMaintenance, setup, publicForm, publicSubmit, authOf, addPhotoRow, expiredPhotos, CUR: () => CUR };
 }
