@@ -2020,7 +2020,8 @@ function processBookingMails() {
     }
     // 예약확정 즉시 안내
     if (cfgOn('확정 즉시 안내 사용') && newlyConfirmed.length) {
-      newlyConfirmed.forEach(function (r) {
+      /* 밤 9시~아침 9시에 들어온 예약은 아침 9시 이후 자동 정산 때 보냅니다 (sendPendingConfirms) */
+      if (!quietHour_()) newlyConfirmed.forEach(function (r) {
         try { sendForRow(dataSh, r, '확정'); } catch (e) { Logger.log(e); }
       });
     }
@@ -6363,8 +6364,35 @@ function sendRetouchYear() {
 }
 
 
+/* ---------- 밤에 들어온 예약 확정 문자는 아침 9시에 (2026-11-20) ---------- */
+function quietHour_() { var h = new Date().getHours(); return h >= 21 || h < 9; }
+/* 15분마다 도는 자동 정산 때 같이 실행: 아직 확정 문자를 못 보낸 앞으로의 예약(최근 이틀 안에 들어온 것)을 보냅니다 */
+function sendPendingConfirms() {
+  try {
+    if (quietHour_() || !cfgOn('확정 즉시 안내 사용')) return { sent: 0 };
+    var sh = sheetOf(SH.DATA), last = sh.getLastRow();
+    if (last < 2) return { sent: 0 };
+    var v = sh.getRange(2, 1, last - 1, D_HEAD.length).getValues();
+    var today = ymd(new Date()), since = fmt(new Date(Date.now() - 2 * 86400000), 'yyyy-MM-dd HH:mm:ss'), sent = 0;
+    for (var i = 0; i < v.length; i++) {
+      var o = v[i];
+      if (o[D.STATUS - 1] !== STATUS.OK) continue;
+      if (ymd(o[D.DATE - 1]) < today) continue;
+      if (String(o[D.SOURCE - 1] || '').indexOf('네이버') < 0 && !o[D.MAILAT - 1]) continue;   /* 손으로 넣은 예약은 제외 */
+      var at = String(o[D.PROCAT - 1] || '');
+      if (!at || at < since) continue;
+      var hh = Number(at.slice(11, 13));
+      if (!(hh >= 21 || hh < 9)) continue;   /* 밤에 들어온 것만 */
+      if (alreadySent(o[D.RESNO - 1], '확정')) continue;
+      var r = sendForRow(sh, i + 2, '확정');
+      if (r && r.ok) sent++;
+    }
+    return { sent: sent };
+  } catch (e) { logError('밤 예약 확정 문자', e); return { sent: 0 }; }
+}
+
 
   const __API = { api_login: api_login, api_savePins: api_savePins, api_setPassword: api_setPassword, api_bootstrap: api_bootstrap, api_home: api_home, api_day: api_day, api_range: api_range, api_month: api_month, api_updateBooking: api_updateBooking, api_addBooking: api_addBooking, api_searchCustomers: api_searchCustomers, api_customer: api_customer, api_saveCustomer: api_saveCustomer, api_addCustomer: api_addCustomer, api_deleteCustomer: api_deleteCustomer, api_customerFolder: api_customerFolder, api_sales: api_sales, api_menu: api_menu, api_saveMenu: api_saveMenu, api_payment: api_payment, api_savePayment: api_savePayment, api_savePp: api_savePp, api_ppLog: api_ppLog, api_staffReport: api_staffReport, api_usage: api_usage, api_blocks: api_blocks, api_saveBlock: api_saveBlock, api_deleteBlock: api_deleteBlock, api_trash: api_trash, api_restoreTrash: api_restoreTrash, api_cash: api_cash, api_saveCash: api_saveCash, api_deleteCash: api_deleteCash, api_forms: api_forms, api_saveForms: api_saveForms, api_saveConsent: api_saveConsent, api_consents: api_consents, api_uploadPhoto: api_uploadPhoto, api_sendLog: api_sendLog, api_salesReport: api_salesReport, api_checkMail: api_checkMail, api_send: api_send, api_completePast: api_completePast, api_needAttention: api_needAttention, api_rescanRequests: api_rescanRequests, api_consentLink: api_consentLink, api_esignList: api_esignList, api_esignView: api_esignView, api_photos: api_photos, api_deletePhoto: api_deletePhoto, api_sourceStats: api_sourceStats, api_importTvSales: api_importTvSales, api_backfillCharts: api_backfillCharts, api_seedPmuForms: api_seedPmuForms, api_ackBlock: api_ackBlock, api_ackAllBlocks: api_ackAllBlocks, api_renameBooking: api_renameBooking, api_renameCustomer: api_renameCustomer, api_smsCfg: api_smsCfg, api_saveSmsCfg: api_saveSmsCfg, api_testSms: api_testSms, api_custExtra: api_custExtra };
   return { __API, api, processBookingMails, autoSettle, sendReminderAdvance, sendReminderTomorrow,
-           sendReminderToday, sendRetouchYear, dailyMaintenance, setup, publicForm, publicSubmit, authOf, addPhotoRow, expiredPhotos, CUR: () => CUR };
+           sendReminderToday, sendRetouchYear, sendPendingConfirms, dailyMaintenance, setup, publicForm, publicSubmit, authOf, addPhotoRow, expiredPhotos, CUR: () => CUR };
 }

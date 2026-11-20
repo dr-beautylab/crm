@@ -2010,7 +2010,8 @@ function processBookingMails() {
     }
     // 예약확정 즉시 안내
     if (cfgOn('확정 즉시 안내 사용') && newlyConfirmed.length) {
-      newlyConfirmed.forEach(function (r) {
+      /* 밤 9시~아침 9시에 들어온 예약은 아침 9시 이후 자동 정산 때 보냅니다 (sendPendingConfirms) */
+      if (!quietHour_()) newlyConfirmed.forEach(function (r) {
         try { sendForRow(dataSh, r, '확정'); } catch (e) { Logger.log(e); }
       });
     }

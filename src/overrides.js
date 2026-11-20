@@ -1151,3 +1151,30 @@ function sendRetouchYear() {
   } catch (e) { logError('1년 리터치 안내', e); return { sent: 0 }; }
 }
 
+
+/* ---------- 밤에 들어온 예약 확정 문자는 아침 9시에 (2026-11-20) ---------- */
+function quietHour_() { var h = new Date().getHours(); return h >= 21 || h < 9; }
+/* 15분마다 도는 자동 정산 때 같이 실행: 아직 확정 문자를 못 보낸 앞으로의 예약(최근 이틀 안에 들어온 것)을 보냅니다 */
+function sendPendingConfirms() {
+  try {
+    if (quietHour_() || !cfgOn('확정 즉시 안내 사용')) return { sent: 0 };
+    var sh = sheetOf(SH.DATA), last = sh.getLastRow();
+    if (last < 2) return { sent: 0 };
+    var v = sh.getRange(2, 1, last - 1, D_HEAD.length).getValues();
+    var today = ymd(new Date()), since = fmt(new Date(Date.now() - 2 * 86400000), 'yyyy-MM-dd HH:mm:ss'), sent = 0;
+    for (var i = 0; i < v.length; i++) {
+      var o = v[i];
+      if (o[D.STATUS - 1] !== STATUS.OK) continue;
+      if (ymd(o[D.DATE - 1]) < today) continue;
+      if (String(o[D.SOURCE - 1] || '').indexOf('네이버') < 0 && !o[D.MAILAT - 1]) continue;   /* 손으로 넣은 예약은 제외 */
+      var at = String(o[D.PROCAT - 1] || '');
+      if (!at || at < since) continue;
+      var hh = Number(at.slice(11, 13));
+      if (!(hh >= 21 || hh < 9)) continue;   /* 밤에 들어온 것만 */
+      if (alreadySent(o[D.RESNO - 1], '확정')) continue;
+      var r = sendForRow(sh, i + 2, '확정');
+      if (r && r.ok) sent++;
+    }
+    return { sent: sent };
+  } catch (e) { logError('밤 예약 확정 문자', e); return { sent: 0 }; }
+}

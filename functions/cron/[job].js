@@ -2,7 +2,7 @@ import { run, json, keyOK } from '../../src/store.js';
 
 /* 구글 쪽 시계(트리거)가 정해진 시각에 부르는 입구 */
 const JOBS = {
-  settle: g => g.autoSettle(true),
+  settle: g => { const r = g.autoSettle(true); g.sendPendingConfirms(); return r; },
   /* 매일 오후 2시: 사전 안내 + 전날 안내(닥터뷰티랩) 함께 */
   advance: g => { g.sendReminderAdvance(); g.sendReminderTomorrow(); g.sendRetouchYear(); },
   tomorrow: g => g.sendReminderTomorrow(),
