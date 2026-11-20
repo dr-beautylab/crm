@@ -937,6 +937,12 @@ function saveBooking(resno){
 var PAY = { resno:'', menu:[], items:[], discount:0, b:null, staff:'', feeRate:0, creditRate:0, debitRate:0, foreignRate:0,
             payList:[], staffList:[], splits:[], scalp:null, extra:null, calc:null };
 var SCALP_SPOTS = ['헤어라인','M자 이마','정수리','가르마','구레나룻','원형탈모','흉터커버'];
+/* '신용카드:2690000+네이버페이:30000' → '신용카드 2,690,000 + 네이버페이 30,000' */
+function payLabel(p){
+  p = String(p||'');
+  if(p.indexOf(':') < 0) return p;
+  return p.split('+').map(function(x){ var a = x.split(':'); return a[0] + ' ' + won(Number(a[1]||0)); }).join(' + ');
+}
 function payBaseList(){ return (PAY.payList||[]).filter(function(x){ return x.indexOf('+') < 0; }); }
 function splitsFromSaved(pay, npay, total){
   pay = String(pay||'');
@@ -2253,7 +2259,7 @@ function renderSale(){
       d.list.forEach(function(g){
         h += '<tr><td>' + esc(String(g.date).slice(5).replace('-','/')) + '</td>' +
           '<td>' + esc(g.name||'-') + (g.staff ? '<br><span style="color:var(--muted);font-size:.74rem">' + esc(g.staff) + '</span>' : '') + '</td>' +
-          '<td>' + esc((g.items&&g.items.length?g.items.join(', '):'-')) + (g.pay ? '<br><span style="color:var(--muted);font-size:.74rem">' + esc(g.pay) + '</span>' : '') + '</td>' +
+          '<td>' + esc((g.items&&g.items.length?g.items.join(', '):'-')) + (g.pay ? '<br><span style="color:var(--muted);font-size:.74rem">' + esc(payLabel(g.pay)) + '</span>' : '') + '</td>' +
           '<td class="r">' + won(g.amount) + '</td></tr>';
       });
       h += '</table></div></div></div>';
@@ -2587,7 +2593,7 @@ function renderCash(){
           '<span class="bk-m"><span class="bk-n">' + esc(g.acct||g.kind) +
             (g.note?' <span style="font-weight:500;color:var(--muted)">'+esc(g.note)+'</span>':'') + '</span>' +
           '<span class="bk-p">' + esc(String(g.date).slice(5).replace('-','/')) +
-            (g.pay?' · '+esc(g.pay):'') + (g.shop?' · '+esc(shopShort(g.shop)):'') + '</span></span>' +
+            (g.pay?' · '+esc(payLabel(g.pay)):'') + (g.shop?' · '+esc(shopShort(g.shop)):'') + '</span></span>' +
           '<span class="bk-r"><b style="color:' + (isIn?'var(--good)':'var(--bad)') + '">' +
             (isIn?'+':'−') + won(g.amount) + '</b></span></div>';
       });
