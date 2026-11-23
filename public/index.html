@@ -1692,6 +1692,7 @@ function drawPhoto(){
     '<div class="phg">' + slots + extra +
       '<div class="phs" onclick="shoot(\'\')"><div class="phe">＋</div><div class="phl">추가 사진·영상</div></div></div>' +
     '<p class="sub" style="font-size:12px;margin:8px 2px">칸을 누르면 카메라가 열려요. 다시 찍으면 그 칸 사진이 바뀌어요. 원본 그대로 저장됩니다.</p>' +
+    '<button class="btn" style="margin:4px 0 6px" onclick="openBA()">🖼 전후 사진 만들기</button>' +
     hist +
     '<input type="file" id="ph-cam" accept="image/*" capture="environment" style="display:none" onchange="gotPhoto(this)">' +
     '<input type="file" id="ph-pick" accept="image/*,video/*" style="display:none" onchange="gotPhoto(this)">' +
@@ -1768,6 +1769,203 @@ function viewPhoto(key){
 function delPhoto(key, btn){
   if(btn.dataset.armed !== '1'){ btn.dataset.armed = '1'; btn.textContent = '한 번 더 누르면 지워져요'; return; }
   call('api_deletePhoto',[key]).then(function(){ toast('휴지통으로 옮겼어요 (30일 뒤 완전 삭제)'); openPhoto(PHOTO.id); }).catch(fail);
+}
+
+/* ══════════ 전후 사진 만들기 (기기 안에서만 합침 — 서버에 올리지 않음) ══════════ */
+var BA = { ratio:'feed', layout:'lr', lang:'ko', la:'시술 전', lb:'시술 후', mark:'@dr.beautylab', pos:'bc', lsize:12, logo:null,
+           ph:[{img:null,zoom:1,ox:0,oy:0},{img:null,zoom:1,ox:0,oy:0}] };
+var BA_R = { feed:[1080,1350], square:[1080,1080], reel:[1080,1920] };
+var BA_L = { ko:['시술 전','시술 후'], en:['BEFORE','AFTER'], ja:['施術前','施術後'], none:['',''] };
+var BA_KEYS = ['ratio','layout','lang','la','lb','mark','pos','lsize'];
+(function(){
+  try {
+    var s = JSON.parse(localStorage.getItem('ba.set') || 'null');
+    if(s) BA_KEYS.forEach(function(k){ if(s[k] !== undefined) BA[k] = s[k]; });
+    if(!BA_R[BA.ratio]) BA.ratio = 'feed';
+    var lg = localStorage.getItem('ba.logo');
+    if(lg){ var im = new Image(); im.onload = function(){ BA.logo = im; }; im.src = lg; }
+  } catch(e){}
+})();
+function baKeep(){ try { var o = {}; BA_KEYS.forEach(function(k){ o[k] = BA[k]; }); localStorage.setItem('ba.set', JSON.stringify(o)); } catch(e){} }
+function baImgs(){ return (PHOTO.list || []).filter(function(p){ return !/^video\//.test(p.type || ''); }); }
+/* 같은 칸 이름의 '전'과 '후(리터치)' 사진을 자동으로 짝지음 — 가장 최근 것부터 */
+function baGuess(){
+  var l = baImgs().slice().sort(function(a,b){ return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; });
+  for(var i = 0; i < l.length; i++){
+    var af = l[i]; if(af.kind === '전' || !af.slot) continue;
+    for(var j = 0; j < l.length; j++){
+      var bf = l[j];
+      if(bf.kind === '전' && bf.slot === af.slot && bf.date <= af.date) return [bf.key, af.key];
+    }
+  }
+  return null;
+}
+function openBA(){
+  if(baImgs().length < 2){ toast('사진이 두 장 이상 있어야 만들 수 있어요'); return; }
+  BA.ph = [{img:null,zoom:1,ox:0,oy:0},{img:null,zoom:1,ox:0,oy:0}];
+  var opt = function(v, t, cur){ return '<option value="' + v + '"' + (cur === v ? ' selected' : '') + '>' + t + '</option>'; };
+  openSheet(
+    '<style>#ba-cv{display:block;margin:0 auto;max-width:100%;max-height:54vh;width:auto;height:auto;border-radius:10px;touch-action:none;background:#ece6ea}' +
+    '.ba2{display:grid;grid-template-columns:1fr 1fr;gap:9px}.ba2 .fld{margin:0}.ba-r{width:100%;accent-color:var(--plum)}' +
+    '.bag{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-height:60vh;overflow:auto}.bag>div{position:relative;aspect-ratio:3/4;border-radius:10px;overflow:hidden;background:#f3eef1}' +
+    '.bag img{width:100%;height:100%;object-fit:cover}.bag span{position:absolute;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);color:#fff;font-size:11px;padding:3px 5px;text-align:center}</style>' +
+    '<h2>전후 사진 만들기</h2>' +
+    '<canvas id="ba-cv" width="1080" height="1350"></canvas>' +
+    '<p class="sub" style="font-size:12px;margin:8px 2px;text-align:center">사진을 끌어서 위치를 맞추고, 두 손가락으로 벌려 확대해요.</p>' +
+    '<div class="btnrow"><button class="btn sub" onclick="baPick(0)">전 사진 고르기</button><button class="btn sub" onclick="baPick(1)">후 사진 고르기</button></div>' +
+    '<div class="ba2" style="margin-top:10px">' +
+      '<div class="fld"><label>전 사진 확대</label><input type="range" class="ba-r" id="ba-z0" min="1" max="4" step="0.01" value="1" oninput="baZoom(0,this.value)"></div>' +
+      '<div class="fld"><label>후 사진 확대</label><input type="range" class="ba-r" id="ba-z1" min="1" max="4" step="0.01" value="1" oninput="baZoom(1,this.value)"></div>' +
+      '<div class="fld"><label>크기</label><select onchange="baSet(\'ratio\',this.value)">' + opt('feed','피드 4:5',BA.ratio) + opt('square','정사각',BA.ratio) + opt('reel','릴스 9:16',BA.ratio) + '</select></div>' +
+      '<div class="fld"><label>배치</label><select onchange="baSet(\'layout\',this.value)">' + opt('lr','좌우로',BA.layout) + opt('tb','위아래로',BA.layout) + '</select></div>' +
+      '<div class="fld"><label>글자 언어</label><select onchange="baLang(this.value)">' + opt('ko','한국어',BA.lang) + opt('en','영어',BA.lang) + opt('ja','일본어',BA.lang) + opt('none','글자 없음',BA.lang) + '</select></div>' +
+      '<div class="fld"><label>매장 표시 위치</label><select onchange="baSet(\'pos\',this.value)">' + opt('bc','아래 가운데',BA.pos) + opt('br','아래 오른쪽',BA.pos) + opt('bl','아래 왼쪽',BA.pos) + opt('none','넣지 않음',BA.pos) + '</select></div>' +
+      '<div class="fld"><label>전 사진 글자</label><input type="text" id="ba-la" maxlength="20" value="' + esc(BA.la) + '" oninput="baSet(\'la\',this.value)"></div>' +
+      '<div class="fld"><label>후 사진 글자</label><input type="text" id="ba-lb" maxlength="20" value="' + esc(BA.lb) + '" oninput="baSet(\'lb\',this.value)"></div>' +
+    '</div>' +
+    '<div class="fld" style="margin-top:10px"><label>매장 표시 글자</label><input type="text" maxlength="40" value="' + esc(BA.mark) + '" oninput="baSet(\'mark\',this.value)"></div>' +
+    '<div class="btnrow"><button class="btn sub" onclick="$(\'ba-logo\').click()">로고 그림 고르기</button><button class="btn sub" onclick="baNoLogo()">로고 빼기</button></div>' +
+    '<div class="fld" style="margin-top:10px"><label>로고 크기</label><input type="range" class="ba-r" min="6" max="30" step="1" value="' + BA.lsize + '" oninput="baSet(\'lsize\',parseInt(this.value,10))"></div>' +
+    '<input type="file" id="ba-logo" accept="image/*" style="display:none" onchange="baLogo(this)">' +
+    '<button class="btn" style="margin-top:12px" onclick="baSave(this)">완성 사진 저장</button>' +
+    '<div id="ba-out"></div>' +
+    '<p class="sub" style="font-size:12px;margin:8px 2px">완성 사진은 이 기기에만 저장돼요. 고객 기록의 원본 사진은 그대로예요.</p>' +
+    '<button class="btn sub" onclick="openPhoto(\'' + esc(PHOTO.id) + '\')">← 사진 목록</button>');
+  baSize(); baBind();
+  var g = baGuess();
+  if(g){ baLoad(0, g[0]); baLoad(1, g[1]); }
+}
+function baPick(i){
+  BA.pick = i;
+  var cells = baImgs().slice().sort(function(a,b){ return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; }).map(function(p){
+    return '<div onclick="closeMini();baLoad(' + i + ',\'' + esc(p.key) + '\')"><img src="' + phUrl(p.thumb || p.key) + '"><span>' + esc(p.date.slice(5) + ' ' + p.kind + ' ' + (p.slot || '')) + '</span></div>'; }).join('');
+  openSheetMini('<h3 style="margin:0 0 10px">' + (i ? '후' : '전') + ' 사진 고르기</h3><div class="bag">' + cells + '</div>');
+}
+function baLoad(i, key){
+  var im = new Image();
+  im.onload = function(){ BA.ph[i] = { img:im, zoom:1, ox:0, oy:0 }; if($('ba-z' + i)) $('ba-z' + i).value = 1; if($('ba-out')) $('ba-out').innerHTML = ''; baDraw(); };
+  im.onerror = function(){ toast('사진을 불러오지 못했어요'); };
+  im.src = phUrl(key);
+}
+function baSet(k, v){ BA[k] = v; baKeep(); if(k === 'ratio') baSize(); else baDraw(); }
+function baLang(v){
+  BA.lang = v;
+  if(v !== 'none'){ BA.la = BA_L[v][0]; BA.lb = BA_L[v][1]; if($('ba-la')) $('ba-la').value = BA.la; if($('ba-lb')) $('ba-lb').value = BA.lb; }
+  baKeep(); baDraw();
+}
+function baZoom(i, z){ BA.ph[i].zoom = Math.min(4, Math.max(1, parseFloat(z) || 1)); if($('ba-z' + i)) $('ba-z' + i).value = BA.ph[i].zoom; baDraw(); }
+function baLogo(inp){
+  var f = inp.files && inp.files[0]; inp.value = ''; if(!f) return;
+  var fr = new FileReader();
+  fr.onload = function(){
+    var im = new Image();
+    im.onload = function(){ BA.logo = im; try { localStorage.setItem('ba.logo', fr.result); } catch(e){ toast('로고가 커서 기억하지는 못했어요'); } baDraw(); };
+    im.onerror = function(){ toast('이 로고 그림은 열 수 없어요'); };
+    im.src = fr.result;
+  };
+  fr.readAsDataURL(f);
+}
+function baNoLogo(){ BA.logo = null; try { localStorage.removeItem('ba.logo'); } catch(e){} baDraw(); }
+function baSize(){ var cv = $('ba-cv'); if(!cv) return; cv.width = BA_R[BA.ratio][0]; cv.height = BA_R[BA.ratio][1]; baDraw(); }
+function baPanels(cv){
+  var W = cv.width, H = cv.height, g = 8;
+  return BA.layout === 'lr' ? [{x:0,y:0,w:(W-g)/2,h:H},{x:(W+g)/2,y:0,w:(W-g)/2,h:H}] : [{x:0,y:0,w:W,h:(H-g)/2},{x:0,y:(H+g)/2,w:W,h:(H-g)/2}];
+}
+function baDraw(){
+  var cv = $('ba-cv'); if(!cv) return;
+  var c = cv.getContext('2d'), W = cv.width, H = cv.height;
+  var F = getComputedStyle(document.body).fontFamily || 'sans-serif';
+  c.fillStyle = '#fff'; c.fillRect(0, 0, W, H);
+  var labels = [BA.la, BA.lb];
+  baPanels(cv).forEach(function(p, i){
+    var s = BA.ph[i];
+    c.save(); c.beginPath(); c.rect(p.x, p.y, p.w, p.h); c.clip();
+    if(s.img){
+      var k = Math.max(p.w / s.img.width, p.h / s.img.height) * s.zoom, iw = s.img.width * k, ih = s.img.height * k;
+      var mx = (iw - p.w) / 2, my = (ih - p.h) / 2;
+      s.ox = Math.min(mx, Math.max(-mx, s.ox)); s.oy = Math.min(my, Math.max(-my, s.oy));
+      c.imageSmoothingQuality = 'high';
+      c.drawImage(s.img, p.x + p.w/2 - iw/2 + s.ox, p.y + p.h/2 - ih/2 + s.oy, iw, ih);
+    } else {
+      c.fillStyle = i ? '#e2dbe6' : '#ebe6ee'; c.fillRect(p.x, p.y, p.w, p.h);
+      c.fillStyle = '#857a8c'; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.font = '700 46px ' + F; c.fillText(i ? '후 사진' : '전 사진', p.x + p.w/2, p.y + p.h/2 - 26);
+      c.font = '400 28px ' + F; c.fillText('아래에서 골라 주세요', p.x + p.w/2, p.y + p.h/2 + 34);
+    }
+    c.restore();
+    /* 알약 안 글자: 폭에 맞춰 줄이고 실제 글자 높이로 세로 가운데 맞춤 */
+    var t = BA.lang === 'none' ? '' : labels[i];
+    if(t){
+      var m = 28, pad = 28, h = 74, fs = 44, tw;
+      for(;;){ c.font = '700 ' + fs + 'px ' + F; tw = c.measureText(t).width; if(tw + pad*2 <= p.w - m*2 || fs <= 18) break; fs -= 2; }
+      var w = Math.min(tw + pad*2, p.w - m*2), x = p.x + m, y = p.y + m, r = h/2;
+      c.fillStyle = 'rgba(22,15,24,.64)';
+      c.beginPath(); c.moveTo(x+r, y); c.arcTo(x+w, y, x+w, y+h, r); c.arcTo(x+w, y+h, x, y+h, r); c.arcTo(x, y+h, x, y, r); c.arcTo(x, y, x+w, y, r); c.closePath(); c.fill();
+      var mt = c.measureText(t), asc = mt.actualBoundingBoxAscent || fs*.75, desc = mt.actualBoundingBoxDescent || 0;
+      c.fillStyle = '#fff'; c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+      c.fillText(t, x + w/2, y + h/2 + (asc - desc)/2, w - pad);
+    }
+  });
+  if(BA.pos !== 'none'){
+    var mg = 40, al = BA.pos === 'bl' ? 'left' : BA.pos === 'br' ? 'right' : 'center';
+    var ax = al === 'left' ? mg : al === 'right' ? W - mg : W/2, yy = H - mg;
+    if(BA.mark){
+      c.save(); c.font = '500 34px ' + F; c.textAlign = al; c.textBaseline = 'alphabetic';
+      c.shadowColor = 'rgba(0,0,0,.6)'; c.shadowBlur = 12; c.fillStyle = '#fff';
+      c.fillText(BA.mark, ax, yy, W - mg*2); c.restore();
+      yy -= 52;
+    }
+    if(BA.logo){
+      var lw = W * BA.lsize / 100, lh = lw * BA.logo.height / BA.logo.width;
+      c.drawImage(BA.logo, al === 'left' ? ax : al === 'right' ? ax - lw : ax - lw/2, yy - lh, lw, lh);
+    }
+  }
+}
+function baBind(){
+  var cv = $('ba-cv'); if(!cv) return;
+  var pts = {}, n = 0, pinch = null;
+  function at(e){
+    var r = cv.getBoundingClientRect(), k = cv.width / r.width, x = (e.clientX - r.left) * k, y = (e.clientY - r.top) * k;
+    return { x:x, y:y, i:(BA.layout === 'lr' ? x < cv.width/2 : y < cv.height/2) ? 0 : 1 };
+  }
+  function list(){ return Object.keys(pts).map(function(k){ return pts[k]; }); }
+  cv.addEventListener('pointerdown', function(e){
+    try { cv.setPointerCapture(e.pointerId); } catch(_){}
+    var a = at(e), first = list()[0];
+    pts[e.pointerId] = { x:a.x, y:a.y, i:first ? first.i : a.i }; n = list().length;
+    if(n === 2){ var v = list(); pinch = { d:Math.hypot(v[0].x - v[1].x, v[0].y - v[1].y) || 1, z:BA.ph[v[0].i].zoom }; }
+  });
+  cv.addEventListener('pointermove', function(e){
+    var o = pts[e.pointerId]; if(!o) return;
+    var a = at(e), s = BA.ph[o.i];
+    if(n === 1){ s.ox += a.x - o.x; s.oy += a.y - o.y; }
+    o.x = a.x; o.y = a.y;
+    if(n === 2 && pinch){ var v = list(); baZoom(v[0].i, pinch.z * Math.hypot(v[0].x - v[1].x, v[0].y - v[1].y) / pinch.d); return; }
+    baDraw();
+  });
+  function up(e){ delete pts[e.pointerId]; n = list().length; pinch = null; }
+  cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+}
+function baSave(btn){
+  if(!BA.ph[0].img || !BA.ph[1].img){ toast('전 사진과 후 사진을 모두 골라 주세요'); return; }
+  var cv = $('ba-cv'); baDraw();
+  var d = new Date(), two = function(x){ return ('0' + x).slice(-2); };
+  var name = '전후사진_' + two(d.getMonth()+1) + two(d.getDate()) + '_' + two(d.getHours()) + two(d.getMinutes()) + '.jpg';
+  btn.disabled = true;
+  cv.toBlob(function(blob){
+    btn.disabled = false;
+    if(!blob){ toast('사진을 만들지 못했어요. 다시 눌러 주세요'); return; }
+    var url = URL.createObjectURL(blob);
+    /* 저장이 안 되는 기기를 위해 완성 사진을 아래에도 보여 줌(길게 눌러 저장) */
+    $('ba-out').innerHTML = '<div class="card" style="margin-top:10px"><div class="card-b"><p class="sub" style="font-size:12px;margin:0 0 8px">저장이 안 되면 아래 사진을 길게 눌러 저장해 주세요.</p><img src="' + url + '" style="width:100%;border-radius:10px"></div></div>';
+    var file = null; try { file = new File([blob], name, { type:'image/jpeg' }); } catch(e){}
+    if(file && navigator.canShare && navigator.canShare({ files:[file] })){
+      navigator.share({ files:[file] }).catch(function(){});
+      return;
+    }
+    var a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    toast('저장했어요');
+  }, 'image/jpeg', 0.92);
 }
 
 
