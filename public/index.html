@@ -2007,7 +2007,7 @@ function consentLink(p, phone, form){
       : '';
     /* 외국 번호는 앞의 +를 살려야 문자앱에서 국제 문자로 갑니다 */
     var ph = String(phone || '').trim(); ph = (/^\+/.test(ph) ? '+' : '') + ph.replace(/[^0-9]/g, '');
-    openSheet('<h2>' + consentTitle(p.shop) + ' 링크</h2>' + sel +
+    openSheet('<h2>' + (r.solo ? esc(r.form) : consentTitle(p.shop)) + ' 링크</h2>' + sel +
       '<div class="fld"><label>보낼 문구</label><textarea id="cl-msg" rows="5">' + esc(msg) + '</textarea></div>' +
       '<div class="btnrow">' +
         (ph ? '<a class="btn" href="sms:' + ph + '?body=' + encodeURIComponent(msg) + '">💬 문자앱으로 보내기</a>' : '') +
@@ -2071,8 +2071,18 @@ function consentBtns(c){
       '<button class="btn sub" onclick="consentLink({custId:\'' + id + '\', shop:\'' + s + '\'}, \'' + ph + '\')">🔗 ' + label + ' 링크</button>' +
       '</div>';
   }
-  return row(dg, '사전 상담지') + row(dr, '시술 동의서');
+  /* 닥터뷰티랩 멤버십(선결제) 가입 동의서: 일반 양식과 따로 받습니다 */
+  var mem = '';
+  if(dr){
+    var ds = esc(dr).replace(/'/g, "\\'");
+    mem = '<div class="btnrow" style="margin-bottom:9px">' +
+      '<button class="btn sub" onclick="openConsent(\'' + id + '\', \'' + ds + '\', \'' + MEMBER_FORM + '\')">💳 멤버십 동의서 받기</button>' +
+      '<button class="btn sub" onclick="consentLink({custId:\'' + id + '\', shop:\'' + ds + '\', form:\'' + MEMBER_FORM + '\'}, \'' + ph + '\')">🔗 멤버십 동의서 링크</button>' +
+      '</div>';
+  }
+  return row(dg, '사전 상담지') + row(dr, '시술 동의서') + mem;
 }
+var MEMBER_FORM = '멤버십 이용 동의서';
 function consentTitle(shop){ return shop && shop === shopByIdx(1) ? '사전 상담지' : (shop && shop === shopByIdx(2) ? '시술 동의서' : '상담지·동의서'); }
 function openConsent(id, shop, form){
   var c = (APP.cust && APP.cust.customer) || null;
@@ -2101,6 +2111,14 @@ function openConsent(id, shop, form){
     if(shops.indexOf(shop) < 0) shops.push(shop);
     if(shops.indexOf(c.shop) < 0 && c.shop) shops.push(c.shop);
     var url = location.origin + r.path;
+    if(r.solo){
+      openSheet('<h2>' + esc(r.form) + ' 받기</h2>' +
+        '<p class="sub">' + esc(c.name) + ' 고객님</p>' +
+        '<a class="btn" href="' + esc(url) + '" target="_blank" rel="noopener">📝 작성 화면 열기 (고객님께 건네주세요)</a>' +
+        '<p class="sub" style="font-size:12px;margin-top:10px">멤버십 단계를 고르고 약관에 동의·서명하면 이 고객 기록에 바로 저장돼요. 결제는 서명을 받은 뒤 진행해 주세요.</p>' +
+        '<button class="btn sub" onclick="closeSheet()">닫기</button>');
+      return;
+    }
     openSheet('<h2>' + consentTitle(shop) + ' 받기</h2>' +
       '<p class="sub">' + esc(c.name) + ' 고객님</p>' +
       '<div class="fld"><label>매장</label><select id="oc-shop">' + shops.map(function(x){

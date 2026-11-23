@@ -5311,6 +5311,7 @@ function api_consentLink(p) {
       if (c.ok) { name = c.customer.name; if (!shop) shop = c.customer.shop; }
     }
     if (!shop) return { ok: false, msg: '어느 샵 양식인지 알 수 없습니다.' };
+    if (String(p.form || '') === MEMBER_FORM) ensureMemberForm_();
     var form = String(p.form || '') || defaultFormFor(shop, p.product);
     if (!form) return { ok: false, msg: shop + ' 에 등록된 상담지·동의서 양식이 없습니다.' };
     /* 열려 있는 기간: 예약이 있으면 예약일 밤 11:59까지, 없으면 보낸 날 밤 11:59까지 */
@@ -5347,6 +5348,10 @@ function api_consentLink(p) {
         '· 건물 지하 주차 2시간 무료예요.\n\n' +
         '상담지 미리 작성 (매장에서 써도 돼요)\n#{링크}\n\n' +
         '늦으시면 미리 연락 주세요 010-2722-3093';
+    }
+    if (form === MEMBER_FORM) {
+      text = '[닥터뷰티랩] ' + (name ? String(name).replace(/님$/, '') + '님, ' : '') + '멤버십 이용 동의서예요.\n내용을 읽어 보시고 서명해 주세요.\n#{링크}\n(' + (exp.getMonth() + 1) + '월 ' + exp.getDate() + '일까지 열려 있어요)';
+      return { ok: true, token: token, path: path, form: form, forms: [form], solo: true, text: text };
     }
     return { ok: true, token: token, path: path, form: form, forms: formNamesFor(shop), text: text };
   } catch (e) { logError('동의서 링크', e); return { ok: false, msg: e.message }; }
@@ -5925,7 +5930,7 @@ function api_seedPmuForms() {
 function formNamesFor(shop) {
   var seen = {}, out = [];
   readForms().forEach(function (f) {
-    if (f.form === FORM_COMMON) return;
+    if (f.form === FORM_COMMON || f.form === MEMBER_FORM) return;
     if (f.shop && f.shop !== shop) return;
     if (!seen[f.form]) { seen[f.form] = true; out.push(f.form); }
   });
@@ -6471,6 +6476,59 @@ function sendSms(to, msg) {
     var text = r.getContentText(); var j = {}; try { j = JSON.parse(text); } catch (e) {}
     return { ok: String(j.result_code) === '1', raw: text };
   } catch (e) { return { ok: false, raw: '통신오류: ' + e.message }; }
+}
+
+
+/* =========================================================
+ *  멤버십 이용 동의서 (2026-11-23)
+ *  닥터뷰티랩 선결제 멤버십을 결제할 때 받는 약관 동의·서명 양식입니다.
+ *  - 기존 상담지·동의서와 같은 링크·서명 화면을 그대로 씁니다(고객 기록에 날짜별로 쌓임).
+ *  - 일반 상담지 목록에는 섞이지 않고, 고객 화면의 멤버십 버튼으로만 엽니다.
+ *  - 환불 조항은 공정위 「소비자분쟁해결기준」 미용업(소비자 사정 해지: 이용 금액 + 총 이용금액 10%)과
+ *    방문판매법 계속거래 해지 규정에 맞춰 적었습니다. 문구를 바꾸면 MEMBER_FORM_VER 를 올리세요.
+ * ========================================================= */
+var MEMBER_FORM = '멤버십 이용 동의서';
+var MEMBER_FORM_VER = '2026-11-23a';
+function memberForm_(shop) {
+  var F = MEMBER_FORM;
+  function Q(q, type, opts, need, help) {
+    return { shop: shop, form: F, q: q, type: type, opts: opts || [], need: !!need, cond: '', help: help || '' };
+  }
+  var OK = ['위 내용을 확인했으며 동의합니다.'];
+  return [
+    Q('닥터뷰티랩 멤버십 이용 동의서예요.\n멤버십은 미리 결제하시고, 시술 받으실 때마다 금액을 차감해 쓰는 방식이에요. 아래 내용을 읽고 서명해 주세요.', '안내'),
+    Q('성함', '단답', [], 1),
+    Q('연락처', '전화', [], 1),
+    Q('가입하시는 멤버십', '단일선택', [
+      'ESSENTIAL · 200만원 결제 → 230만원 사용 (30만원 추가 제공)',
+      'SIGNATURE · 300만원 결제 → 360만원 사용 (60만원 추가 제공)',
+      'PRESTIGE · 500만원 결제 → 625만원 사용 (125만원 추가 제공)'], 1),
+    Q('함께 쓰실 가족 성함', '단답', [], 0, '가족과 나눠 쓰실 수 있어요. 함께 쓰실 분 성함을 적어 주세요. (선택)'),
+
+    Q('1. 이용 방법\n· 시술 금액표의 1회 정가로 차감돼요.\n· 결제하신 금액부터 먼저 쓰이고, 추가로 드린 금액은 다음 방문부터 쓰실 수 있어요.\n· 눈썹·입술·두피·리터치 등 닥터뷰티랩의 모든 시술에 쓰실 수 있어요.\n· 멤버십은 2회 결제 할인, 재방문 할인 등 다른 할인과 함께 적용되지 않아요.\n· 적어 주신 가족과 함께 쓰실 수 있고, 쓰실 때마다 남은 금액을 가입하신 분께 알려 드려요.', '안내'),
+    Q('이용 방법 확인', '동의', OK, 1),
+
+    Q('2. 사용 기한\n· ESSENTIAL · SIGNATURE: 결제일로부터 1년\n· PRESTIGE: 결제일로부터 2년\n· 기한이 지나면 추가로 드린 금액은 사라져요. 결제하신 금액 중 남은 금액은 아래 환불 기준대로 돌려 드려요.', '안내'),
+    Q('사용 기한 확인', '동의', OK, 1),
+
+    Q('3. 환불 기준\n· 언제든지 해지하실 수 있어요.\n· 환불 금액 = 결제하신 금액 − 이용하신 금액(1회 정가 기준) − 위약금(결제하신 금액의 10%)\n· 추가로 드린 금액은 혜택으로 드린 것이라 환불 금액에 들어가지 않아요.\n· 예) 200만원 결제 후 정가 100만원어치를 이용하고 해지하시면: 200만원 − 100만원 − 20만원 = 80만원 환불\n· 이용하신 금액과 위약금을 더한 금액이 결제하신 금액보다 많으면 환불 금액은 없어요.\n· 매장 사정으로 더 이용하실 수 없게 되면 위약금 없이 남은 금액을 돌려 드리고, 결제하신 금액의 10%를 더해 드려요.\n· 환불은 결제하신 수단으로, 요청하신 날부터 영업일 3일 안에 처리해 드려요.\n(공정거래위원회 「소비자분쟁해결기준」 미용업 기준을 따릅니다.)', '안내'),
+    Q('환불 기준 확인', '동의', OK, 1),
+
+    Q('4. 그 밖에\n· 다른 분께 넘기실 때는 매장에 미리 알려 주세요.\n· 시술 가격이 바뀌어도 이미 결제하신 멤버십은 가입 당시 금액표 기준으로 차감돼요.\n· 여기 적히지 않은 내용은 관련 법령과 「소비자분쟁해결기준」을 따릅니다.', '안내'),
+    Q('위 내용을 모두 읽고 이해했으며, 멤버십 가입에 동의합니다.', '동의', ['모두 확인했으며 동의합니다.'], 1)
+  ];
+}
+/* 양식이 없거나 문구 판이 바뀌었으면 멤버십 양식만 새로 넣습니다(다른 양식은 그대로) */
+function ensureMemberForm_() {
+  var props = PropertiesService.getScriptProperties();
+  var all = readForms();
+  var has = all.some(function (f) { return f.form === MEMBER_FORM; });
+  if (has && props.getProperty('멤버십 양식 판') === MEMBER_FORM_VER) return false;
+  var keep = all.filter(function (f) { return f.form !== MEMBER_FORM; });
+  /* 매장 이름 표기가 달라도 열리도록 매장 칸은 비워 둡니다(멤버십 버튼은 닥터뷰티랩에만 있음) */
+  writeForms_(keep.concat(memberForm_('')));
+  props.setProperty('멤버십 양식 판', MEMBER_FORM_VER);
+  return true;
 }
 
 
