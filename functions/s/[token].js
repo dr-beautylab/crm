@@ -141,7 +141,13 @@ else {
     else { h+='<input type="text" name="q'+i+'">'; }
     h+='</div>';
   });
-  h+='<div class="sign"><h3 style="margin:0 0 8px;font-size:15px">'+X('본인 서명', false, '<em style="color:#c0392b;font-style:normal"> *</em>')+'</h3>'+
+  /* 멤버십 동의서는 계약서처럼 서명 위에 작성일을 보여 줍니다 (저장되는 날짜는 서버 제출 시각) */
+  var dline='';
+  if(F.form==='멤버십 이용 동의서'){
+    var dt=''; try{ dt=new Date().toLocaleDateString('ko-KR',{timeZone:'Asia/Seoul',year:'numeric',month:'long',day:'numeric'}); }catch(x){ dt=new Date().toISOString().slice(0,10); }
+    dline='<div class="row" style="margin:0 0 10px;font-size:15px;color:#2b2227"><span>작성일</span><b>'+e(dt)+'</b></div>';
+  }
+  h+='<div class="sign">'+dline+'<h3 style="margin:0 0 8px;font-size:15px">'+X('본인 서명', false, '<em style="color:#c0392b;font-style:normal"> *</em>')+'</h3>'+
      '<canvas id="pad"></canvas><div class="row"><span>'+X('손가락으로 서명해 주세요')+'</span><button class="clear" id="clr" type="button" data-k="지우기">지우기</button></div></div>'+
      '<button class="go" id="go" data-k="제출하기">제출하기</button><div class="err" id="err"></div></main>';
   app.innerHTML=h;

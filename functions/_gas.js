@@ -5680,6 +5680,7 @@ function publicSubmit(token, body, meta) {
   var LN = { en: '영어', ja: '일본어', zh: '중국어' }[meta && meta.lang];
   if (LN) clean.push({ q: '작성 언어', type: '단답', v: LN });
   var stamp = nowStr();
+  if (f.form === MEMBER_FORM) clean.push({ q: '작성일', type: '단답', v: stamp.slice(0, 10) });
   sheetWithHead(ESIGN_SHEET, ESIGN_HEAD).appendRow([stamp, token, v[4], v[5], v[6], v[7], v[8],
     JSON.stringify(clean), sign, String((meta && meta.ua) || '').slice(0, 300), String((meta && meta.ip) || '')]);
   L.s.getRange(L.r, 4).setValue('완료');
@@ -6488,7 +6489,7 @@ function sendSms(to, msg) {
  *    방문판매법 계속거래 해지 규정에 맞춰 적었습니다. 문구를 바꾸면 MEMBER_FORM_VER 를 올리세요.
  * ========================================================= */
 var MEMBER_FORM = '멤버십 이용 동의서';
-var MEMBER_FORM_VER = '2026-11-23f';
+var MEMBER_FORM_VER = '2026-11-23h';
 function memberForm_(shop) {
   var F = MEMBER_FORM;
   function Q(q, type, opts, need, help) {
@@ -6497,8 +6498,6 @@ function memberForm_(shop) {
   var OK = ['위 내용을 확인했으며 동의합니다.'];
   return [
     Q('닥터뷰티랩 멤버십 이용 동의서입니다.\n멤버십은 미리 결제하신 뒤, 시술을 받으실 때마다 금액을 차감해 사용하는 방식입니다. 아래 내용을 확인하시고 서명해 주시기 바랍니다.', '안내'),
-    Q('성함', '단답', [], 1),
-    Q('연락처', '전화', [], 1),
     Q('가입하시는 멤버십', '단일선택', [
       'ESSENTIAL · 200만원 결제 → 230만원 사용 (혜택 금액 30만원)',
       'SIGNATURE · 300만원 결제 → 360만원 사용 (혜택 금액 60만원)',
@@ -6515,7 +6514,10 @@ function memberForm_(shop) {
     Q('환불 기준 확인', '동의', OK, 1),
 
     Q('4. 그 밖의 사항\n· 멤버십은 가입하신 분과 적어 주신 가족만 사용하실 수 있으며, 다른 분께 양도하실 수 없습니다. 더 이용하지 않으실 경우 위 환불 기준에 따라 환불해 드립니다.\n· 시술 가격이 변경되더라도 이미 결제하신 멤버십은 가입 당시 금액표 기준으로 차감됩니다.\n· 여기에 적히지 않은 사항은 관련 법령과 「소비자분쟁해결기준」을 따릅니다.', '안내'),
-    Q('위 내용을 모두 읽고 이해했으며, 멤버십 가입에 동의합니다.', '동의', ['모두 확인했으며 동의합니다.'], 1)
+    Q('위 내용을 모두 읽고 이해했으며, 멤버십 가입에 동의합니다.', '동의', ['모두 확인했으며 동의합니다.'], 1),
+    /* 맨 아래: 작성일(화면에 자동 표시) · 성함 · 서명 */
+    Q('성함', '단답', [], 1, '서명하시는 분의 성함을 적어 주세요.'),
+    Q('연락처', '전화', [], 1)
   ];
 }
 /* 양식이 없거나 문구 판이 바뀌었으면 멤버십 양식만 새로 넣습니다(다른 양식은 그대로) */
