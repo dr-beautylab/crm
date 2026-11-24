@@ -854,6 +854,11 @@ function drawBooking(o){
       (o.request ? '<div class="kv"><span>요청사항</span><span style="text-align:right;max-width:62%">' + esc(o.request) + '</span></div>' : '') +
       '<div class="kv"><span>예약번호</span><span>' + esc(o.resno) + ' <span class="tag plum">' + esc(o.source||'') + '</span></span></div>' +
     '</div></div>' +
+    (o.custId ?
+      '<div class="sec-title">📸 시술 사진</div><div class="card"><div class="card-b">' +
+        '<div id="bk-ph" class="sub" style="font-size:13px">불러오는 중…</div>' +
+        '<button class="btn sub" style="margin-top:8px" onclick="PHOTO.date=\'' + esc(o.date) + '\';openPhoto(\'' + esc(o.custId) + '\')">📷 오늘 사진 찍기 · 전체 보기</button>' +
+      '</div></div>' : '') +
     '<div class="field"><label>이름' + (o.name === '고객' ? ' — 네이버가 가린 이름이라 실명을 넣어 주세요' : '') + '</label>' +
       '<input id="f-name" data-old="' + esc(o.name === '고객' ? '' : o.name) + '" value="' + esc(o.name === '고객' ? '' : o.name) + '" placeholder="실명"></div>' +
     '<div class="field"><label>연락처' + (!o.phone && !o.safe ? ' — 넣어야 문자가 나갑니다' : '') + '</label>' +
@@ -890,7 +895,29 @@ function drawBooking(o){
       '<button class="btn sub" onclick="closeSheet()">닫기</button>' +
     '</div>'
   );
-  if(o.custId) loadEsign(o.custId);
+  if(o.custId){ loadEsign(o.custId); loadBookingPhotos(o.custId); }
+}
+function loadBookingPhotos(cid){
+  call('api_photos',[cid]).then(function(r){
+    var box = $('bk-ph'); if(!box) return;
+    var list = (r && r.list) || [];
+    if(!list.length){ box.textContent = '아직 올린 사진이 없어요.'; return; }
+    PHOTO.id = cid; PHOTO.list = list;
+    var dates = {}; list.forEach(function(p){ (dates[p.date] = dates[p.date] || []).push(p); });
+    var order = { '전':0, '리터치':1, '후':2 };
+    box.innerHTML = '<style>.bkg{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:6px}' +
+      '.bkg .phs{position:relative;aspect-ratio:3/4;border-radius:8px;overflow:hidden;background:#f3eef1}' +
+      '.bkg img{width:100%;height:100%;object-fit:cover}.bkg .phl{position:absolute;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);color:#fff;font-size:10px;padding:2px 3px;text-align:center}</style>' +
+      Object.keys(dates).sort().reverse().map(function(d){
+        var ps = dates[d].slice().sort(function(a,b){ return (order[a.kind]||0) - (order[b.kind]||0); });
+        return '<div style="font-weight:700;margin:6px 0 4px;color:var(--ink)">' + esc(d) + '</div><div class="bkg">' + ps.map(function(p){
+          var vid = /^video\//.test(p.type || '');
+          return '<div class="phs" onclick="viewPhoto(\'' + esc(p.key) + '\')">' +
+            (vid && !p.thumb ? '<div class="phe" style="display:flex;align-items:center;justify-content:center;height:100%;font-size:22px">🎬</div>' : '<img loading="lazy" src="' + phUrl(p.thumb || p.key) + '">') +
+            '<div class="phl">' + esc(p.kind + ' ' + (p.slot || '')) + '</div></div>';
+        }).join('') + '</div>';
+      }).join('');
+  }).catch(function(){ var box = $('bk-ph'); if(box) box.textContent = '사진을 불러오지 못했어요.'; });
 }
 function askCancelBooking(resno, btn){
   if(btn.dataset.armed === '1'){ doCancelBooking(resno, btn); return; }
@@ -1621,7 +1648,7 @@ function drawCustomer(){
     '<button class="btn" onclick="saveCustomer(\'' + esc(c.id) + '\')">저장</button>' +
 
     '<div class="sec-title">사진 · 서류</div><div class="card"><div class="card-b">' +
-      '<button class="btn sub" style="margin-bottom:9px" onclick="openPhoto(\'' + esc(c.id) + '\')">' +
+      '<button class="btn sub" style="margin-bottom:9px" onclick="PHOTO.date=APP.boot.today;openPhoto(\'' + esc(c.id) + '\')">' +
         '📸 시술 사진 · 영상</button>' +
       consentBtns(c) +
       '<div id="esign-' + esc(c.id) + '" class="sub" style="font-size:13px"></div>' +
