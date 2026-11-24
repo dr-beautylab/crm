@@ -895,7 +895,51 @@ function drawBooking(o){
       '<button class="btn sub" onclick="closeSheet()">닫기</button>' +
     '</div>'
   );
-  if(o.custId){ loadEsign(o.custId); loadBookingPhotos(o.custId); }
+  if(o.custId){ CMP.resno = o.resno; loadEsign(o.custId); loadBookingPhotos(o.custId); }
+}
+var CMP = { sel: [], on: false, back: null, resno: '' };
+function cmpBar(){
+  return '<div id="cmp-bar" style="display:flex;gap:6px;margin:6px 0">' +
+    '<button class="btn sub" style="flex:1;padding:8px" onclick="cmpToggle()">' + (CMP.on ? '✖ 고르기 끝' : '☑ 골라서 비교') + '</button>' +
+    (CMP.on ? '<button class="btn" style="flex:1;padding:8px" onclick="cmpShow()">비교 보기 (' + CMP.sel.length + ')</button>' : '') +
+    '</div>' + (CMP.on ? '<p class="sub" style="font-size:12px;margin:0 2px 6px">비교할 사진을 2~4장 눌러 주세요.</p>' : '');
+}
+function cmpRedraw(){
+  var b = $('cmp-bar'); if(!b) return;
+  var tmp = document.createElement('div'); tmp.innerHTML = cmpBar();
+  var n = b.nextElementSibling; if(n && n.tagName === 'P' && /비교할 사진/.test(n.textContent)) n.remove();
+  b.replaceWith.apply(b, Array.prototype.slice.call(tmp.childNodes));
+  document.querySelectorAll('.phs[data-k]').forEach(function(el){
+    var i = CMP.sel.indexOf(el.getAttribute('data-k'));
+    el.style.outline = i >= 0 ? '3px solid var(--plum)' : '';
+    var t = el.querySelector('.cmpn'); if(t) t.remove();
+    if(i >= 0){ var c = document.createElement('div'); c.className = 'cmpn';
+      c.style.cssText = 'position:absolute;top:4px;left:4px;background:var(--plum);color:#fff;border-radius:50%;width:20px;height:20px;font-size:12px;display:flex;align-items:center;justify-content:center;font-weight:700';
+      c.textContent = i + 1; el.appendChild(c); }
+  });
+}
+function cmpToggle(){ CMP.on = !CMP.on; if(!CMP.on) CMP.sel = []; cmpRedraw(); }
+function cmpTap(el){
+  var k = el.getAttribute('data-k');
+  if(!CMP.on){ viewPhoto(k); return; }
+  var i = CMP.sel.indexOf(k);
+  if(i >= 0) CMP.sel.splice(i, 1);
+  else { if(CMP.sel.length >= 4){ toast('4장까지 고를 수 있어요'); return; } CMP.sel.push(k); }
+  cmpRedraw();
+}
+function cmpShow(){
+  if(CMP.sel.length < 2){ toast('2장 이상 골라 주세요'); return; }
+  var items = CMP.sel.map(function(k){ var p = null; PHOTO.list.forEach(function(x){ if(x.key === k) p = x; }); return p || { key: k }; });
+  var cols = items.length === 4 ? 2 : items.length;
+  openSheet('<h2>사진 비교</h2>' +
+    '<div style="display:grid;grid-template-columns:repeat(' + cols + ',1fr);gap:6px">' + items.map(function(p){
+      var vid = /^video\//.test(p.type || '');
+      return '<div><div style="font-size:12px;font-weight:700;text-align:center;margin-bottom:3px">' + esc((p.date||'') + ' ' + (p.kind||'') + ' ' + (p.slot||'')) + '</div>' +
+        (vid ? '<video src="' + phUrl(p.key) + '" controls playsinline style="width:100%;border-radius:8px"></video>'
+             : '<img src="' + phUrl(p.key) + '" style="width:100%;border-radius:8px" onclick="viewPhoto(\'' + esc(p.key) + '\')">') + '</div>';
+    }).join('') + '</div>' +
+    '<p class="sub" style="font-size:12px;margin:8px 2px">사진을 누르면 한 장씩 크게 볼 수 있어요.</p>' +
+    '<button class="btn sub" onclick="(CMP.back||closeSheet)()">← 돌아가기</button>');
 }
 function loadBookingPhotos(cid){
   call('api_photos',[cid]).then(function(r){
@@ -905,14 +949,15 @@ function loadBookingPhotos(cid){
     PHOTO.id = cid; PHOTO.list = list;
     var dates = {}; list.forEach(function(p){ (dates[p.date] = dates[p.date] || []).push(p); });
     var order = { '전':0, '리터치':1, '후':2 };
-    box.innerHTML = '<style>.bkg{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:6px}' +
+    CMP.sel = []; CMP.on = false; CMP.back = function(){ openBooking(CMP.resno); };
+    box.innerHTML = cmpBar() + '<style>.bkg{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:6px}' +
       '.bkg .phs{position:relative;aspect-ratio:3/4;border-radius:8px;overflow:hidden;background:#f3eef1}' +
       '.bkg img{width:100%;height:100%;object-fit:cover}.bkg .phl{position:absolute;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);color:#fff;font-size:10px;padding:2px 3px;text-align:center}</style>' +
       Object.keys(dates).sort().reverse().map(function(d){
         var ps = dates[d].slice().sort(function(a,b){ return (order[a.kind]||0) - (order[b.kind]||0); });
         return '<div style="font-weight:700;margin:6px 0 4px;color:var(--ink)">' + esc(d) + '</div><div class="bkg">' + ps.map(function(p){
           var vid = /^video\//.test(p.type || '');
-          return '<div class="phs" onclick="viewPhoto(\'' + esc(p.key) + '\')">' +
+          return '<div class="phs" data-k="' + esc(p.key) + '" onclick="cmpTap(this)">' +
             (vid && !p.thumb ? '<div class="phe" style="display:flex;align-items:center;justify-content:center;height:100%;font-size:22px">🎬</div>' : '<img loading="lazy" src="' + phUrl(p.thumb || p.key) + '">') +
             '<div class="phl">' + esc(p.kind + ' ' + (p.slot || '')) + '</div></div>';
         }).join('') + '</div>';
@@ -1690,6 +1735,7 @@ function openPhoto(id, kind, set){
 }
 function drawPhoto(){
   var id = PHOTO.id, today = PHOTO.date;
+  CMP.sel = []; CMP.on = false; CMP.back = function(){ openPhoto(PHOTO.id); };
   var tabs = ['전','후','리터치'].map(function(k){
     return '<button class="btn ' + (PHOTO.kind===k?'':'sub') + '" onclick="openPhoto(\'' + esc(id) + '\',\'' + k + '\')">' + k + '</button>'; }).join('');
   var sets = Object.keys(PSET).map(function(k){
@@ -1707,7 +1753,7 @@ function drawPhoto(){
   var dates = {}; PHOTO.list.forEach(function(p){ (dates[p.date] = dates[p.date] || []).push(p); });
   var hist = Object.keys(dates).sort().reverse().filter(function(d){ return d !== today; }).map(function(d){
     return '<div class="sec-title">' + esc(d) + '</div><div class="phg">' + dates[d].map(function(p){
-      return '<div class="phs" onclick="viewPhoto(\'' + esc(p.key) + '\')"><img src="' + phUrl(p.thumb || p.key) + '"><div class="phl">' + esc(p.kind + ' ' + p.slot) + '</div></div>'; }).join('') + '</div>';
+      return '<div class="phs" data-k="' + esc(p.key) + '" onclick="cmpTap(this)"><img src="' + phUrl(p.thumb || p.key) + '"><div class="phl">' + esc(p.kind + ' ' + p.slot) + '</div></div>'; }).join('') + '</div>';
   }).join('');
   openSheet(
     '<style>.phg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.phs{position:relative;aspect-ratio:3/4;border-radius:10px;overflow:hidden;background:#f3eef1;border:1px solid #e7dde2}' +
@@ -1720,7 +1766,7 @@ function drawPhoto(){
       '<div class="phs" onclick="shoot(\'\')"><div class="phe">＋</div><div class="phl">추가 사진·영상</div></div></div>' +
     '<p class="sub" style="font-size:12px;margin:8px 2px">칸을 누르면 카메라가 열려요. 다시 찍으면 그 칸 사진이 바뀌어요. 원본 그대로 저장됩니다.</p>' +
     '<button class="btn" style="margin:4px 0 6px" onclick="openBA()">🖼 전후 사진 만들기</button>' +
-    hist +
+    (hist ? cmpBar() : '') + hist +
     '<input type="file" id="ph-cam" accept="image/*" capture="environment" style="display:none" onchange="gotPhoto(this)">' +
     '<input type="file" id="ph-pick" accept="image/*,video/*" style="display:none" onchange="gotPhoto(this)">' +
     '<div id="ph-out"></div>' +
