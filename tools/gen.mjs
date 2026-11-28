@@ -2,9 +2,10 @@
 // 사용: node tools/gen.mjs <Code.gs 경로>
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const src = fs.readFileSync(process.argv[2], 'utf8');
-const here = path.dirname(new URL(import.meta.url).pathname);
+const here = path.dirname(fileURLToPath(import.meta.url));
 const overrides = fs.readFileSync(path.join(here, '../src/overrides.js'), 'utf8');
 
 const apiNames = [...new Set([...src.matchAll(/^function (api_[A-Za-z0-9_]+)\s*\(/gm), ...overrides.matchAll(/^function (api_[A-Za-z0-9_]+)\s*\(/gm)].map(m => m[1]))];

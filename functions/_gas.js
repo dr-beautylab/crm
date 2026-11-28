@@ -5693,13 +5693,22 @@ function publicSubmit(token, body, meta) {
     }).join('\n');
     buildConsentSheet().appendRow([stamp, v[4], v[5], v[7], v[8] + ' (전자서명)', lines, 'esign:' + token]);
   } catch (e) {}
-  try { fillChartFromForm_(String(v[4] || ''), clean, qs, ans, meta && meta.lang, stamp); } catch (e) { logError('상담지→고객차트', e); }
+  try {
+    if (fillChartFromForm_(String(v[4] || ''), clean, qs, ans, meta && meta.lang, stamp) === 'mismatch') {
+      /* 서식 성함이 차트 이름과 달라요: 차트는 그대로 두고, 상담지 목록에 표시만 남겨요 */
+      var cs2 = buildConsentSheet(), lr = cs2.getLastRow();
+      if (lr >= 2 && String(cs2.getRange(lr, 7).getValue()) === 'esign:' + token) {
+        cs2.getRange(lr, 5).setValue(v[8] + ' (전자서명) ⚠ 차트 이름과 다름 — 다른 손님이면 예약을 옮겨 주세요');
+      }
+    }
+  } catch (e) { logError('상담지→고객차트', e); }
   return { ok: true };
 }
 
 /* ---------- 상담지·동의서 → 고객 차트 ----------
-   인적사항(성함·연락처·생년월일·성별·언어)은 차트가 비어 있을 때만 채우고,
-   방문경로와 주의사항(건강 질문에 '예'라고 한 것만)은 가장 최근 서식 기준으로 바꿔 넣어요. */
+   차트의 빈 칸만 채워요. 원장님이 적어 둔 값이나 다른 값이 이미 있으면 건드리지 않아요.
+   (주의사항만 예외: 이전 상담지가 자동으로 적은 내용이면 새 상담지 내용으로 바꿔요.)
+   서식에 적은 성함이 차트 이름과 다르면 다른 사람일 수 있어서 아무것도 채우지 않아요. */
 var HEALTH_CONFIRM_Q = '건강 상태 답변 확인';
 var HEALTH_CONFIRM_A = '위 건강 상태 질문에 사실대로 답했음을 확인합니다. 사실과 다르게 적거나 알리지 않아 생긴 문제는 본인에게 책임이 있음을 이해합니다.';
 /* 감염병 문항은 대표만 봅니다 (직원 화면·고객 차트에는 내용 대신 '대표 확인 필요'만) */
@@ -5727,8 +5736,9 @@ function fillChartFromForm_(cid, clean, qs, ans, lang, stamp) {
   function empty(col) { return String(row[col - 1] || '').trim() === ''; }
 
   /* 인적사항: 비어 있는 칸만 */
-  var name = byQ('성함'), cur = String(row[C.NAME - 1] || '');
-  if (name && (cur.indexOf('*') >= 0 || cur === '고객' || !cur)) { try { renameEverywhere(cid, '', name); } catch (e) {} }
+  var name = byQ('성함'), cur = String(row[C.NAME - 1] || '').trim();
+  if (name && cur && cur !== '고객' && !sameName_(name, cur)) return 'mismatch';
+  if (name && (cur === '고객' || !cur || (cur.indexOf('*') >= 0 && nameMatchesMask(name, cur)))) { try { renameEverywhere(cid, '', name); } catch (e) {} }
   var ph = normPhone(byQ('연락처'));
   if (ph && empty(C.PHONE) && empty(C.SAFE)) sh.getRange(R, isSafePhone(ph) ? C.SAFE : C.PHONE).setValue(ph);
   var bd = byQ('생년월일');
@@ -5740,7 +5750,7 @@ function fillChartFromForm_(cid, clean, qs, ans, lang, stamp) {
 
   /* 방문경로: 경로 + 키워드/소개자 */
   var route = byQ('방문경로');
-  if (route) {
+  if (route && empty(C.ROUTE)) {
     var kw = byQ('어떤 키워드로 검색해서 오셨어요?'), ref = byQ('소개해 주신 분 성함'), etc = byQ('어떤 경로로 오셨는지 알려 주세요');
     var extra = kw || ref || etc;
     sh.getRange(R, C.ROUTE).setValue(route + (extra ? ' (' + extra + ')' : ''));
@@ -5771,7 +5781,10 @@ function fillChartFromForm_(cid, clean, qs, ans, lang, stamp) {
     var det = (isDet && shown(k + 1)) ? val(nc.v) : '';
     notes.push(label + (det ? ': ' + det : ''));
   }
-  if (start >= 0) sh.getRange(R, C.CAUTION).setValue(notes.length ? '[' + String(stamp).slice(0, 10) + ' 상담지] ' + notes.join(' · ') : '');
+  var curCaution = String(row[C.CAUTION - 1] || '').trim();
+  if (start >= 0 && (!curCaution || (curCaution.charAt(0) === '[' && curCaution.indexOf(' 상담지]') === 11))) {
+    sh.getRange(R, C.CAUTION).setValue(notes.length ? '[' + String(stamp).slice(0, 10) + ' 상담지] ' + notes.join(' · ') : '');
+  }
   SpreadsheetApp.flush();
 }
 
@@ -6533,8 +6546,268 @@ function ensureMemberForm_() {
   return true;
 }
 
+/* =========================================================
+ *  고객 섞임 방지 (2026-11-28)
+ *  · 직접 넣는 예약·고객은 이름과 번호가 모두 맞을 때만 기존 고객에 조용히 붙습니다.
+ *    하나라도 다르면 화면에서 "누구에게 붙일까요?"를 먼저 묻습니다.
+ *  · 예약 이름을 고쳐도 고객 차트 이름은 바꾸지 않습니다(네이버가 가린 이름 풀기만 예외).
+ *  · 상담지·동의서는 차트의 빈 칸만 채웁니다.
+ *  · 잘못 붙은 예약은 '다른 고객으로 옮기기'로 옮깁니다.
+ * ========================================================= */
+function maskedName_(n) { n = String(n || '').trim(); return !n || n === '고객' || n.indexOf('*') >= 0; }
+/* 같은 사람 이름으로 볼 수 있는지: 똑같거나, 한쪽이 네이버가 가린 이름이고 가린 모양이 맞을 때 */
+function sameName_(a, b) {
+  a = String(a || '').trim(); b = String(b || '').trim();
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (b.indexOf('*') >= 0) return nameMatchesMask(a, b);
+  if (a.indexOf('*') >= 0) return nameMatchesMask(b, a);
+  return false;
+}
+function custBrief_(c, why) {
+  return { id: c.id, name: c.name, phone: c.phone || c.safe || '', shop: c.shop, last: c.last, visits: c.visits, why: why };
+}
+/* 이름·번호로 기존 고객 찾기 → { exact: 고객ID 또는 '', cands: [물어볼 후보] } */
+function custCandidates_(name, phone) {
+  name = String(name || '').trim();
+  var pd = onlyDigits(phone);
+  var all = readCustomers().map(custToObj);
+  var out = { exact: '', cands: [] };
+  if (pd) {
+    var byPhone = all.filter(function (c) { return onlyDigits(c.phone) === pd || onlyDigits(c.safe) === pd; });
+    for (var i = 0; i < byPhone.length; i++) {
+      if (sameName_(name, byPhone[i].name) || byPhone[i].name === '고객') { out.exact = byPhone[i].id; return out; }
+    }
+    if (byPhone.length) {
+      out.cands = byPhone.map(function (c) { return custBrief_(c, '번호는 같은데 이름이 달라요'); });
+      return out;
+    }
+  }
+  var byName = all.filter(function (c) { return c.name === name; });
+  if (!byName.length) return out;
+  if (!pd && byName.length === 1 && !onlyDigits(byName[0].phone) && !onlyDigits(byName[0].safe)) {
+    out.exact = byName[0].id; return out;   /* 번호 없이 넣었고, 같은 이름의 번호 없는 고객이 한 명뿐 */
+  }
+  out.cands = byName.map(function (c) {
+    var has = onlyDigits(c.phone) || onlyDigits(c.safe);
+    return custBrief_(c, !pd ? '이름이 같아요 (번호를 안 넣으셨어요)' : (has ? '이름은 같은데 번호가 달라요' : '이름이 같고 차트에 번호가 없어요'));
+  });
+  return out;
+}
+function custExists_(id) {
+  id = String(id || '').trim();
+  return !!id && readCustomers().some(function (r) { return String(r[C.ID - 1]).trim() === id; });
+}
+function custNameOf_(id) {
+  var n = '';
+  readCustomers().forEach(function (r) { if (String(r[C.ID - 1]).trim() === String(id).trim()) n = String(r[C.NAME - 1] || '').trim(); });
+  return n;
+}
+/* 무조건 새 고객 만들기 */
+function newCustomer_(name, phone, safe, shopName, source) {
+  var sh = sheetOf(SH.CUST), id = newCustomerId(), nr = [];
+  for (var z = 0; z < C_HEAD.length; z++) nr.push('');
+  nr[C.ID - 1] = id;
+  nr[C.NAME - 1] = String(name || '').trim();
+  nr[C.PHONE - 1] = onlyDigits(phone) ? normPhone(phone) : '';
+  nr[C.SAFE - 1] = onlyDigits(safe) ? normPhone(safe) : '';
+  nr[C.SHOP - 1] = shopName || '';
+  nr[C.SOURCE - 1] = source || '수동';
+  sh.appendRow(nr);
+  return id;
+}
+/* 직접 넣을 때 고객 정하기. pick: '' = 알아서(애매하면 물어봄), 'new' = 새 고객, 고객ID = 그 고객 */
+function resolveCustomer_(name, phone, safe, shopName, pick) {
+  pick = String(pick || '').trim();
+  if (pick === 'new') return { id: newCustomer_(name, phone, safe, shopName, '수동') };
+  if (pick) {
+    if (!custExists_(pick)) return { err: '고른 고객을 찾지 못했습니다. 다시 시도해 주세요.' };
+    return { id: pick };
+  }
+  var m = custCandidates_(name, phone || safe);
+  if (m.exact) { if (phone) syncPhoneToCustomer(m.exact, phone); return { id: m.exact }; }
+  if (m.cands.length) return { ask: m.cands };
+  return { id: newCustomer_(name, phone, safe, shopName, '수동') };
+}
 
-  const __API = { api_login: api_login, api_savePins: api_savePins, api_setPassword: api_setPassword, api_bootstrap: api_bootstrap, api_home: api_home, api_day: api_day, api_range: api_range, api_month: api_month, api_updateBooking: api_updateBooking, api_addBooking: api_addBooking, api_searchCustomers: api_searchCustomers, api_customer: api_customer, api_saveCustomer: api_saveCustomer, api_addCustomer: api_addCustomer, api_deleteCustomer: api_deleteCustomer, api_customerFolder: api_customerFolder, api_sales: api_sales, api_menu: api_menu, api_saveMenu: api_saveMenu, api_payment: api_payment, api_savePayment: api_savePayment, api_savePp: api_savePp, api_ppLog: api_ppLog, api_staffReport: api_staffReport, api_usage: api_usage, api_blocks: api_blocks, api_saveBlock: api_saveBlock, api_deleteBlock: api_deleteBlock, api_trash: api_trash, api_restoreTrash: api_restoreTrash, api_cash: api_cash, api_saveCash: api_saveCash, api_deleteCash: api_deleteCash, api_forms: api_forms, api_saveForms: api_saveForms, api_saveConsent: api_saveConsent, api_consents: api_consents, api_uploadPhoto: api_uploadPhoto, api_sendLog: api_sendLog, api_salesReport: api_salesReport, api_checkMail: api_checkMail, api_send: api_send, api_completePast: api_completePast, api_needAttention: api_needAttention, api_rescanRequests: api_rescanRequests, api_consentLink: api_consentLink, api_esignList: api_esignList, api_esignView: api_esignView, api_photos: api_photos, api_deletePhoto: api_deletePhoto, api_sourceStats: api_sourceStats, api_importTvSales: api_importTvSales, api_backfillCharts: api_backfillCharts, api_seedPmuForms: api_seedPmuForms, api_ackBlock: api_ackBlock, api_ackAllBlocks: api_ackAllBlocks, api_renameBooking: api_renameBooking, api_renameCustomer: api_renameCustomer, api_smsCfg: api_smsCfg, api_saveSmsCfg: api_saveSmsCfg, api_testSms: api_testSms, api_custExtra: api_custExtra, api_patchHealthForms: api_patchHealthForms };
+function api_addBooking(p) {
+  try {
+    if (!p.shop || !p.date || !p.name) return { ok: false, msg: '샵·날짜·이름은 반드시 넣어주세요.' };
+    var sh = sheetOf(SH.DATA);
+    var row = newDataRow();
+    row[D.NAME - 1] = String(p.name).trim();
+    var ph = normPhone(p.phone || '');
+    if (isSafePhone(ph)) row[D.SAFE - 1] = ph; else row[D.PHONE - 1] = ph;
+    var who = resolveCustomer_(row[D.NAME - 1], row[D.PHONE - 1], row[D.SAFE - 1], p.shop, p.attach);
+    if (who.err) return { ok: false, msg: who.err };
+    if (who.ask) return { ok: false, ask: true, cands: who.ask, msg: '비슷한 고객이 있어요. 누구 예약인지 골라 주세요.' };
+    var resno = 'M' + fmt(new Date(), 'yyMMddHHmmss') + Math.floor(Math.random() * 90 + 10);
+    row[D.RESNO - 1]   = resno;
+    row[D.SHOP - 1]    = p.shop;
+    row[D.STATUS - 1]  = STATUS.OK;
+    row[D.DATE - 1]    = toDate(p.date);
+    row[D.TIME - 1]    = normTime(p.time || '') || (p.time || '');
+    row[D.PRODUCT - 1] = p.product || '';
+    row[D.OPTION - 1]  = p.option || '';
+    row[D.AMOUNT - 1]  = p.amount ? Number(p.amount) : '';
+    row[D.PAID - 1]    = '';
+    row[D.STAFF - 1]   = p.staff || '';
+    row[D.REQUEST - 1] = p.request || '';
+    row[D.SOURCE - 1]  = '수동';
+    row[D.PROCAT - 1]  = nowStr();
+    row[D.CUSTID - 1]  = who.id;
+    sh.appendRow(row);
+    recomputeCustomerStats();
+    return { ok: true, resno: resno, custId: who.id };
+  } catch (e) {
+    logError('앱 예약추가', e);
+    return { ok: false, msg: e.message };
+  }
+}
+
+function api_addCustomer(p) {
+  try {
+    var name = String((p && p.name) || '').trim();
+    if (!name) return { ok: false, msg: '이름을 넣어주세요.' };
+    var ph = normPhone(p.phone || ''), phone = '', safe = '';
+    if (ph) { if (isSafePhone(ph)) safe = ph; else phone = ph; }
+    var shopName = p.shop || (shops()[0] ? shops()[0].name : '');
+    var id;
+    if (String(p.attach || '') === 'new') id = newCustomer_(name, phone, safe, shopName, '수동');
+    else {
+      var m = custCandidates_(name, phone || safe);
+      var list = m.exact ? readCustomers().map(custToObj).filter(function (c) { return c.id === m.exact; })
+                             .map(function (c) { return custBrief_(c, '이미 있는 고객이에요'); }) : m.cands;
+      if (list.length) return { ok: false, ask: true, cands: list, msg: '비슷한 고객이 이미 있어요.' };
+      id = newCustomer_(name, phone, safe, shopName, '수동');
+    }
+    var q = { id: id };
+    if (p.product !== undefined) q.product = p.product || '';
+    if (p.total !== undefined)   q.total = (p.total === '' ? '' : p.total);
+    if (p.memo !== undefined)    q.memo = p.memo || '';
+    var r = api_saveCustomer(q);
+    return { ok: true, id: id, customer: r && r.customer };
+  } catch (e) {
+    logError('앱 고객추가', e);
+    return { ok: false, msg: e.message };
+  }
+}
+
+/* 예약 한 건의 이름만 바꾸기 (그 예약의 매출 줄 이름도 같이) */
+function renameOneBooking_(resno, newName) {
+  var dsh = sheetOf(SH.DATA), t = buildResnoIndex()[String(resno)];
+  if (!t) return false;
+  dsh.getRange(t.r, D.NAME).setValue(newName);
+  try {
+    var sh = ss().getSheetByName(SH.SLOG), last = sh ? sh.getLastRow() : 0;
+    if (last >= 2) {
+      var v = sh.getRange(2, 1, last - 1, SLOG_HEAD.length).getValues();
+      for (var k = 0; k < v.length; k++) if (String(v[k][1]).trim() === String(resno)) sh.getRange(k + 2, 5).setValue(newName);
+    }
+  } catch (e) { logError('예약 이름 고치기(매출)', e); }
+  return true;
+}
+/* 예약 화면에서 이름 고치기: 고객 차트 이름은 네이버가 가린 이름일 때만 같이 풉니다 */
+function api_renameBooking(resno, name) {
+  try {
+    name = String(name || '').trim();
+    if (!name) return { ok: false, msg: '이름을 넣어 주세요.' };
+    if (name.indexOf('*') >= 0) return { ok: false, msg: '별표(*) 없이 실명을 넣어 주세요.' };
+    var dsh = sheetOf(SH.DATA);
+    var t = buildResnoIndex()[String(resno)];
+    if (!t) return { ok: false, msg: '예약을 찾지 못했습니다.' };
+    var row = dsh.getRange(t.r, 1, 1, D_HEAD.length).getValues()[0];
+    var cid = String(row[D.CUSTID - 1] || '').trim();
+    if (!cid) {
+      var who = resolveCustomer_(name, row[D.PHONE - 1], row[D.SAFE - 1], row[D.SHOP - 1], '');
+      if (who.id) { cid = who.id; dsh.getRange(t.r, D.CUSTID).setValue(cid); }
+    }
+    var cname = cid ? custNameOf_(cid) : '';
+    if (cid && cname !== name && maskedName_(cname) && (cname === '고객' || !cname || nameMatchesMask(name, cname))) {
+      var r = renameEverywhere(cid, resno, name);
+      r.msg = '저장했습니다 · 이 손님의 예약·매출 기록 이름도 바꿨습니다';
+      return r;
+    }
+    renameOneBooking_(resno, name);
+    SpreadsheetApp.flush();
+    if (cid && cname && cname !== name) {
+      return { ok: true, kept: cname, custId: cid,
+               msg: '이 예약 이름만 바꿨어요. 고객 차트는 ' + cname + ' 님 그대로예요. 다른 손님이면 "다른 고객으로 옮기기"를 눌러 주세요.' };
+    }
+    return { ok: true, msg: '저장했습니다' };
+  } catch (e) {
+    logError('앱 예약 이름 고치기', e);
+    return { ok: false, msg: e.message };
+  }
+}
+
+/* ---------- 예약을 다른 고객으로 옮기기 ----------
+   to: 고객ID, 또는 'new'(예약에 적힌 이름·번호로 새 고객). 그 예약의 매출·상담지·동의서도 같이 옮깁니다.
+   시술 사진은 고객 차트에 날짜별로 붙어 있어서 옮기지 않습니다. */
+function api_moveBooking(resno, to) {
+  try {
+    resno = String(resno || '').trim(); to = String(to || '').trim();
+    var dsh = sheetOf(SH.DATA), t = buildResnoIndex()[resno];
+    if (!t) return { ok: false, msg: '예약을 찾지 못했습니다.' };
+    var row = dsh.getRange(t.r, 1, 1, D_HEAD.length).getValues()[0];
+    var from = String(row[D.CUSTID - 1] || '').trim(), toName;
+    if (to === 'new') {
+      toName = String(row[D.NAME - 1] || '').trim();
+      if (!toName || maskedName_(toName)) return { ok: false, msg: '예약 이름을 실명으로 먼저 고쳐 주세요.' };
+      to = newCustomer_(toName, row[D.PHONE - 1], row[D.SAFE - 1], row[D.SHOP - 1], '수동');
+    } else {
+      if (!custExists_(to)) return { ok: false, msg: '옮길 고객을 찾지 못했습니다.' };
+      toName = custNameOf_(to);
+    }
+    if (to === from) return { ok: false, msg: '이미 그 고객의 예약이에요.' };
+    var n = { sales: 0, forms: 0 };
+    dsh.getRange(t.r, D.CUSTID).setValue(to);
+    if (toName && !maskedName_(toName)) dsh.getRange(t.r, D.NAME).setValue(toName);
+    /* 매출내역: 2열 예약번호, 4열 고객ID, 5열 고객명 */
+    var ssh = ss().getSheetByName(SH.SLOG), sl = ssh ? ssh.getLastRow() : 0;
+    if (sl >= 2) {
+      var sv = ssh.getRange(2, 1, sl - 1, SLOG_HEAD.length).getValues();
+      for (var i = 0; i < sv.length; i++) {
+        if (String(sv[i][1]).trim() !== resno) continue;
+        ssh.getRange(i + 2, 4).setValue(to);
+        if (toName && !maskedName_(toName)) ssh.getRange(i + 2, 5).setValue(toName);
+        n.sales++;
+      }
+    }
+    /* 이 예약으로 보낸 상담지·동의서 링크 → 전자서명기록 → 동의서기록 */
+    var tokens = {}, L = linkRows();
+    for (var a = 0; a < L.v.length; a++) {
+      if (String(L.v[a][6]).trim() !== resno) continue;
+      tokens[String(L.v[a][0])] = 1;
+      L.s.getRange(a + 2, 5).setValue(to); L.s.getRange(a + 2, 6).setValue(toName);
+    }
+    var es = sheetWithHead(ESIGN_SHEET, ESIGN_HEAD), el = es.getLastRow();
+    if (el >= 2) {
+      var ev = es.getRange(2, 1, el - 1, 5).getValues();
+      for (var b = 0; b < ev.length; b++) {
+        if (String(ev[b][4]).trim() !== resno && !tokens[String(ev[b][1])]) continue;
+        tokens[String(ev[b][1])] = 1;
+        es.getRange(b + 2, 3).setValue(to); es.getRange(b + 2, 4).setValue(toName); n.forms++;
+      }
+    }
+    var cs = buildConsentSheet(), cl = cs.getLastRow();
+    if (cl >= 2) {
+      var cv = cs.getRange(2, 1, cl - 1, CONSENT_HEAD.length).getValues();
+      for (var c = 0; c < cv.length; c++) {
+        var m = /^esign:(.+)$/.exec(String(cv[c][6] || ''));
+        if (!m || !tokens[m[1]]) continue;
+        cs.getRange(c + 2, 2).setValue(to); cs.getRange(c + 2, 3).setValue(toName);
+      }
+    }
+    SpreadsheetApp.flush();
+    recomputeCustomerStats();
+    return { ok: true, to: to, name: toName, n: n,
+             msg: toName + ' 님 차트로 옮겼어요 (매출 ' + n.sales + '줄, 상담지·동의서 ' + n.forms + '건 포함)' };
+  } catch (e) { logError('예약 옮기기', e); return { ok: false, msg: e.message }; }
+}
+
+
+  const __API = { api_login: api_login, api_savePins: api_savePins, api_setPassword: api_setPassword, api_bootstrap: api_bootstrap, api_home: api_home, api_day: api_day, api_range: api_range, api_month: api_month, api_updateBooking: api_updateBooking, api_addBooking: api_addBooking, api_searchCustomers: api_searchCustomers, api_customer: api_customer, api_saveCustomer: api_saveCustomer, api_addCustomer: api_addCustomer, api_deleteCustomer: api_deleteCustomer, api_customerFolder: api_customerFolder, api_sales: api_sales, api_menu: api_menu, api_saveMenu: api_saveMenu, api_payment: api_payment, api_savePayment: api_savePayment, api_savePp: api_savePp, api_ppLog: api_ppLog, api_staffReport: api_staffReport, api_usage: api_usage, api_blocks: api_blocks, api_saveBlock: api_saveBlock, api_deleteBlock: api_deleteBlock, api_trash: api_trash, api_restoreTrash: api_restoreTrash, api_cash: api_cash, api_saveCash: api_saveCash, api_deleteCash: api_deleteCash, api_forms: api_forms, api_saveForms: api_saveForms, api_saveConsent: api_saveConsent, api_consents: api_consents, api_uploadPhoto: api_uploadPhoto, api_sendLog: api_sendLog, api_salesReport: api_salesReport, api_checkMail: api_checkMail, api_send: api_send, api_completePast: api_completePast, api_needAttention: api_needAttention, api_rescanRequests: api_rescanRequests, api_consentLink: api_consentLink, api_esignList: api_esignList, api_esignView: api_esignView, api_photos: api_photos, api_deletePhoto: api_deletePhoto, api_sourceStats: api_sourceStats, api_importTvSales: api_importTvSales, api_backfillCharts: api_backfillCharts, api_seedPmuForms: api_seedPmuForms, api_ackBlock: api_ackBlock, api_ackAllBlocks: api_ackAllBlocks, api_renameBooking: api_renameBooking, api_renameCustomer: api_renameCustomer, api_smsCfg: api_smsCfg, api_saveSmsCfg: api_saveSmsCfg, api_testSms: api_testSms, api_custExtra: api_custExtra, api_patchHealthForms: api_patchHealthForms, api_moveBooking: api_moveBooking };
   return { __API, api, processBookingMails, autoSettle, sendReminderAdvance, sendReminderTomorrow,
            sendReminderToday, sendRetouchYear, sendPendingConfirms, markSendFailures, dailyMaintenance, setup, publicForm, publicSubmit, authOf, addPhotoRow, expiredPhotos, CUR: () => CUR };
 }

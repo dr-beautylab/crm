@@ -693,13 +693,38 @@ function quickSale(d){
   var p = { shop: $('q-shop').value, date: d, time: $('q-time').value, name: $('q-name').value,
             phone: $('q-phone').value, product: '', amount: '', staff: '', request: '' };
   if(!p.name.trim()){ toast('이름을 넣어주세요'); return; }
+  sendQuickSale(p);
+}
+function sendQuickSale(p){
   toast('만드는 중…');
   call('api_addBooking',[p]).then(function(r){
+    if(r.ask){ askWho(r, p, function(id){ p.attach = id; sendQuickSale(p); }); return; }
     if(!r.ok){ toast(r.msg); return; }
     $('p-home').dataset.loaded = ''; pgClear(); APP.month = null;
     openPay(r.resno);
   }).catch(fail);
 }
+/* 비슷한 고객이 이미 있을 때: 누구 것인지 먼저 묻습니다 (고객 차트의 이름·번호는 바뀌지 않아요) */
+var ASK = { go: null };
+function askWho(r, p, go, openOnly){
+  ASK.go = go;
+  var list = (r.cands || []).map(function(c){
+    return '<button type="button" class="bk" style="width:100%" onclick="' + (openOnly ? 'closeSheet();openCustomer(\'' + esc(c.id) + '\')' : 'askPick(\'' + esc(c.id) + '\')') + '">' +
+      '<span class="bk-bar' + (shopIdx(c.shop)===2?' s2':'') + '"></span>' +
+      '<span class="bk-m"><span class="bk-n">' + esc(c.name) + ' <span style="font-weight:400;color:var(--muted)">' + esc(c.phone || '번호 없음') + '</span></span>' +
+      '<span class="bk-p">' + esc(c.why + (c.last ? ' · 최근 방문 ' + c.last : '')) + '</span></span></button>';
+  }).join('');
+  openSheet(
+    '<h2>' + (openOnly ? '이미 있는 고객 같아요' : '누구 예약인가요?') + '</h2>' +
+    '<p class="sub">입력하신 내용: ' + esc(String(p.name).trim()) + (p.phone ? ' · ' + esc(p.phone) : ' · 번호 없음') + '</p>' +
+    '<p style="margin:0 0 8px;font-size:.86rem;color:var(--ink2)">비슷한 고객이 이미 있어요. ' +
+      (openOnly ? '같은 분이면 눌러서 차트를 여세요.' : '같은 분이면 그 고객을 누르세요. 고객 차트의 이름과 번호는 바뀌지 않아요.') + '</p>' +
+    '<div class="card">' + list + '</div>' +
+    '<button class="btn" onclick="askPick(\'new\')">＋ 다른 분이에요 — 새 고객으로 만들기</button>' +
+    '<div class="btnrow"><button class="btn sub" style="grid-column:1/3" onclick="closeSheet()">취소</button></div>'
+  );
+}
+function askPick(id){ var go = ASK.go; ASK.go = null; if(go) go(id); }
 
 /* ── 주 ── */
 function shiftWeek(n){
@@ -873,6 +898,7 @@ function drawBooking(o){
       '<div class="sec-title">상담지 · 동의서</div><div class="card"><div class="card-b">' +
         '<div id="esign-' + esc(o.custId) + '" class="sub" style="font-size:13px">불러오는 중…</div>' +
         '<button class="btn sub" style="margin-top:8px" onclick="openCustomer(\'' + esc(o.custId) + '\')">👤 고객 화면 열기</button>' +
+        '<button class="btn sub" style="margin-top:8px" onclick="openMove(\'' + esc(o.resno) + '\')">↔ 다른 고객으로 옮기기 (잘못 붙은 예약)</button>' +
       '</div></div>' : '') +
     '<div class="sec-title">결제 · 매출</div>' +
     '<div class="card"><div class="card-b">' +
@@ -896,6 +922,47 @@ function drawBooking(o){
     '</div>'
   );
   if(o.custId){ CMP.resno = o.resno; loadEsign(o.custId); loadBookingPhotos(o.custId); }
+}
+/* 잘못 붙은 예약을 다른 고객으로 옮기기 */
+var MV = { resno: '', t: null, list: [] };
+function openMove(resno){
+  MV.resno = resno; MV.list = [];
+  openSheet(
+    '<h2>다른 고객으로 옮기기</h2>' +
+    '<p class="sub">이 예약과 그 예약의 매출·상담지·동의서를 함께 옮겨요. 시술 사진은 옮겨지지 않아요.</p>' +
+    '<div class="field"><label>옮길 고객 찾기</label><input id="mv-q" placeholder="이름 또는 번호 뒷 4자리" oninput="moveSearch()"></div>' +
+    '<div id="mv-list"></div>' +
+    '<button class="btn sub" onclick="moveTo(\'new\', \'새 고객\')">＋ 이 예약의 이름·번호로 새 고객을 만들어 옮기기</button>' +
+    '<div class="btnrow"><button class="btn sub" style="grid-column:1/3" onclick="openBooking(MV.resno)">돌아가기</button></div>'
+  );
+}
+function moveSearch(){
+  clearTimeout(MV.t);
+  var term = $('mv-q').value.trim(), box = $('mv-list');
+  if(term.length < 2){ box.innerHTML = ''; return; }
+  MV.t = setTimeout(function(){
+    call('api_searchCustomers',[term, '']).then(function(r){
+      MV.list = (r.list || []).slice(0, 8);
+      if(!$('mv-list')) return;
+      $('mv-list').innerHTML = !MV.list.length ? '<p class="sub">찾는 고객이 없어요.</p>' :
+        '<div class="card">' + MV.list.map(function(c, i){
+          return '<button type="button" class="bk" style="width:100%" onclick="moveTo(MV.list[' + i + '].id, MV.list[' + i + '].name)">' +
+            '<span class="bk-bar' + (shopIdx(c.shop)===2?' s2':'') + '"></span>' +
+            '<span class="bk-m"><span class="bk-n">' + esc(c.name) + '</span><span class="bk-p">' + esc((c.phone||c.safe||'번호 없음') + ' · ' + c.shop + (c.last ? ' · 최근 ' + c.last : '')) + '</span></span></button>';
+        }).join('') + '</div>';
+    }).catch(function(){});
+  }, 250);
+}
+function moveTo(id, name){
+  if(!confirm(name + (id === 'new' ? '을 만들어' : ' 님 차트로') + ' 이 예약을 옮길까요?')) return;
+  toast('옮기는 중…');
+  call('api_moveBooking',[MV.resno, id]).then(function(r){
+    if(!r.ok){ toast(r.msg || '옮기지 못했습니다'); return; }
+    toast(r.msg || '옮겼습니다');
+    $('p-home').dataset.loaded = ''; pgClear(); APP.month = null;
+    openBooking(MV.resno);
+    if(APP.page==='book') loadDay(); else renderHome();
+  }).catch(fail);
 }
 var CMP = { sel: [], on: false, back: null, resno: '' };
 function cmpBar(){
@@ -1000,7 +1067,7 @@ function saveBooking(resno){
   }).then(function(r){
     if(!r) return;
     if(!r.ok){ toast(r.msg); return; }
-    closeSheet(); toast(nmChanged ? '저장했습니다 · 이 손님의 예약·매출 기록 이름도 바꿨습니다' : '저장했습니다');
+    closeSheet(); if(nmChanged && r.kept){ alert(r.msg); } else toast(nmChanged ? (r.msg || '저장했습니다') : '저장했습니다');
     $('p-home').dataset.loaded = ''; pgClear();
     if(APP.page==='book') loadDay(); else renderHome();
   }).catch(fail);
@@ -1371,8 +1438,12 @@ function addBooking(){
     amount: $('a-amount').value, staff: $('a-staff').value, request: $('a-request').value
   };
   if(!p.name.trim()){ toast('이름을 넣어주세요'); return; }
+  sendAddBooking(p);
+}
+function sendAddBooking(p){
   toast('추가하는 중…');
   call('api_addBooking',[p]).then(function(r){
+    if(r.ask){ askWho(r, p, function(id){ p.attach = id; sendAddBooking(p); }); return; }
     if(!r.ok){ toast(r.msg); return; }
     closeSheet(); toast('추가했습니다');
     APP.day = p.date; APP.month = null;
@@ -1419,8 +1490,12 @@ function addCust(){
   var p = { name:$('n-name').value, phone:$('n-phone').value, shop:$('n-shop').value,
             product:$('n-product').value, total:$('n-total').value, memo:$('n-memo').value };
   if(!p.name.trim()){ toast('이름을 넣어주세요'); return; }
+  sendAddCust(p);
+}
+function sendAddCust(p){
   toast('추가하는 중…');
   call('api_addCustomer',[p]).then(function(r){
+    if(r.ask){ askWho(r, p, function(id){ p.attach = id; sendAddCust(p); }, true); return; }
     if(!r.ok){ toast(r.msg||'추가하지 못했습니다'); return; }
     closeSheet(); toast('추가했습니다'); custSearch();
   }).catch(fail);
